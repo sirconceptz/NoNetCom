@@ -1,0 +1,1 @@
+/Users/mateusz/DEV/ble_communicator/third_party/flutter_plugins/jni/src/CMakeLists.txt

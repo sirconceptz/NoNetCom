@@ -1,0 +1,1 @@
+/Users/mateusz/DEV/ble_communicator/build/jni/intermediates/cxx/Debug/5k612m1m/obj/x86

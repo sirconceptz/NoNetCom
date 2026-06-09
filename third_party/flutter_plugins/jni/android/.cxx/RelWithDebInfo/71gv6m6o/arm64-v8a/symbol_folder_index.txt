@@ -1,0 +1,1 @@
+/Users/mateusz/DEV/ble_communicator/build/jni/intermediates/cxx/RelWithDebInfo/71gv6m6o/obj/arm64-v8a

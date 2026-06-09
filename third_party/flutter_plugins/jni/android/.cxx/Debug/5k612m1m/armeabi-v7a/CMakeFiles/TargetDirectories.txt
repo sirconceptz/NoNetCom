@@ -1,0 +1,3 @@
+/Users/mateusz/.pub-cache/hosted/pub.dev/jni-1.0.0/android/.cxx/Debug/5k612m1m/armeabi-v7a/CMakeFiles/jni.dir
+/Users/mateusz/.pub-cache/hosted/pub.dev/jni-1.0.0/android/.cxx/Debug/5k612m1m/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/mateusz/.pub-cache/hosted/pub.dev/jni-1.0.0/android/.cxx/Debug/5k612m1m/armeabi-v7a/CMakeFiles/rebuild_cache.dir

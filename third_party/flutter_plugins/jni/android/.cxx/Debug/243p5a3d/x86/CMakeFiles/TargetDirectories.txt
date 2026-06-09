@@ -1,0 +1,3 @@
+/Users/mateusz/DEV/ble_communicator/third_party/flutter_plugins/jni/android/.cxx/Debug/243p5a3d/x86/CMakeFiles/jni.dir
+/Users/mateusz/DEV/ble_communicator/third_party/flutter_plugins/jni/android/.cxx/Debug/243p5a3d/x86/CMakeFiles/edit_cache.dir
+/Users/mateusz/DEV/ble_communicator/third_party/flutter_plugins/jni/android/.cxx/Debug/243p5a3d/x86/CMakeFiles/rebuild_cache.dir

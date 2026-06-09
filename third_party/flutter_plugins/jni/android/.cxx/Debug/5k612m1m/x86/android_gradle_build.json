@@ -1,0 +1,38 @@
+{
+  "buildFiles": [
+    "/Users/mateusz/.pub-cache/hosted/pub.dev/jni-1.0.0/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/mateusz/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/mateusz/.pub-cache/hosted/pub.dev/jni-1.0.0/android/.cxx/Debug/5k612m1m/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/mateusz/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/mateusz/.pub-cache/hosted/pub.dev/jni-1.0.0/android/.cxx/Debug/5k612m1m/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "jni::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "jni",
+      "output": "/Users/mateusz/DEV/ble_communicator/build/jni/intermediates/cxx/Debug/5k612m1m/obj/x86/libdartjni.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/mateusz/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/mateusz/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [
+    "c"
+  ],
+  "cppFileExtensions": []
+}
