@@ -146,6 +146,11 @@ The full procedure and result template are in
 
 ## Documentation
 
+- [Polska dokumentacja projektu](docs/README_PL.md)
+- [Przewodnik użytkownika](docs/USER_GUIDE_PL.md)
+- [Development guide](docs/DEVELOPMENT_PL.md)
+- [Dane i bezpieczeństwo](docs/SECURITY_AND_DATA_PL.md)
+- [Troubleshooting](docs/TROUBLESHOOTING_PL.md)
 - [Protocol specification](PROTOCOL.md)
 - [Threat model](THREAT_MODEL.md)
 - [Architecture](ARCHITECTURE.md)
