@@ -13,6 +13,22 @@ class OfflineChatApp extends StatelessWidget {
           seedColor: const Color(0xFF007A7A),
           brightness: Brightness.light,
         ),
+        scaffoldBackgroundColor: const Color(0xFFF7FAF9),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          surfaceTintColor: Colors.transparent,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(8)),
+            borderSide: BorderSide.none,
+          ),
+        ),
         useMaterial3: true,
       ),
       home: const ChatShell(),
@@ -63,6 +79,7 @@ class _ChatShellState extends State<ChatShell> {
   bool _recordingVoice = false;
   bool _liveVoiceSpeaking = false;
   bool _liveSegmentLoopRunning = false;
+  bool _showMessageSearch = false;
   bool _disposed = false;
   String? _selectedThreadId;
   String _status = 'Uruchamianie...';
@@ -154,8 +171,8 @@ class _ChatShellState extends State<ChatShell> {
         onRequestPermissions: _requestEssentialPermissions,
         onOpenSettings: openAppSettings,
         onStartBluetooth: _startBluetooth,
-        onScan: _scan,
         onFinish: _finishOnboarding,
+        onSkip: _skipOnboarding,
       );
     }
 
@@ -170,6 +187,7 @@ class _ChatShellState extends State<ChatShell> {
               (thread.contact?.remoteName ?? '').toLowerCase().contains(query);
         }).toList();
     final selected = _selectedThread;
+    final isWideLayout = MediaQuery.sizeOf(context).width >= 760;
     final allMessages = selected == null
         ? <ChatMessage>[]
         : _store.messagesFor(selected.id);
@@ -180,128 +198,197 @@ class _ChatShellState extends State<ChatShell> {
           (message.fileName ?? '').toLowerCase().contains(query);
     }).toList();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('NoNetCom'),
-        actions: [
-          IconButton(
-            tooltip: 'Skanuj',
-            onPressed: _scanning ? null : _scan,
-            icon: _scanning
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.radar),
+    return PopScope(
+      canPop: selected == null || isWideLayout,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && selected != null && !isWideLayout) {
+          setState(() {
+            _selectedThreadId = null;
+            _showMessageSearch = false;
+            _messageSearchController.clear();
+          });
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            selected != null && !isWideLayout ? 'Rozmowa' : 'NoNetCom',
           ),
-          IconButton(
-            tooltip: 'Bluetooth',
-            onPressed: _startBluetooth,
-            icon: Icon(
-              _bluetoothRunning
-                  ? Icons.bluetooth_connected
-                  : Icons.bluetooth_disabled,
+          actions: [
+            if (selected == null || isWideLayout)
+              IconButton(
+                tooltip: 'Znajdź osoby w pobliżu',
+                onPressed: _scanning ? null : _scan,
+                icon: _scanning
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.person_search_outlined),
+              ),
+            PopupMenuButton<_MainMenuAction>(
+              tooltip: 'Menu aplikacji',
+              onSelected: _handleMainMenuAction,
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: _MainMenuAction.bluetooth,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      _bluetoothRunning
+                          ? Icons.bluetooth_connected
+                          : Icons.bluetooth_disabled,
+                    ),
+                    title: const Text('Bluetooth'),
+                    subtitle: Text(
+                      _bluetoothRunning ? 'Uruchomiony' : 'Uruchom',
+                    ),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: _MainMenuAction.security,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.shield_outlined),
+                    title: Text('Bezpieczeństwo'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: _MainMenuAction.settings,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.settings_outlined),
+                    title: Text('Ustawienia'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: _MainMenuAction.about,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.info_outline),
+                    title: Text('O aplikacji'),
+                  ),
+                ),
+              ],
             ),
-          ),
-          IconButton(
-            tooltip: 'Bezpieczeństwo',
-            onPressed: _openSecurityCenter,
-            icon: const Icon(Icons.shield_outlined),
-          ),
-          IconButton(
-            tooltip: 'Dane lokalne',
-            onPressed: _openDataCenter,
-            icon: const Icon(Icons.storage_outlined),
-          ),
-          IconButton(
-            tooltip: 'Diagnostyka',
-            onPressed: _openDiagnostics,
-            icon: const Icon(Icons.monitor_heart_outlined),
-          ),
-          IconButton(
-            tooltip: 'O aplikacji',
-            onPressed: _openAboutApp,
-            icon: const Icon(Icons.info_outline),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 760;
-                final contactsPane = _ContactsPane(
-                  threads: threads,
-                  selectedThreadId: _selectedThreadId,
-                  nameController: _nameController,
-                  searchController: _contactSearchController,
-                  status: _status,
-                  onSaveName: _saveName,
-                  onScan: _scan,
-                  onCreateGroup: _createGroup,
-                  onSelect: (id) => setState(() => _selectedThreadId = id),
-                  onRename: _renameThread,
-                );
-                final chatPane = _ChatPane(
-                  thread: selected,
-                  messages: messages,
-                  controller: _messageController,
-                  searchController: _messageSearchController,
-                  onSend: _sendMessage,
-                  onAttach: _sendFile,
-                  onVoice: _toggleVoiceRecording,
-                  onCancelVoice: _cancelVoiceRecording,
-                  onPlayVoice: _playVoiceMessage,
-                  onStartLiveVoice: selected?.contact == null
-                      ? null
-                      : () => _startLiveVoiceSession(selected!.contact!),
-                  recordingVoice: _recordingVoice,
-                  voiceElapsed: _voiceElapsed,
-                  onVerify: selected?.contact == null
-                      ? null
-                      : () => _verifyContact(selected!.contact!),
-                  onRename: selected == null
-                      ? null
-                      : () => _renameThread(selected),
-                  onGroupInfo: selected?.group == null
-                      ? null
-                      : () => _openGroupInfo(selected!.group!),
-                  onEmoji: (emoji) {
-                    _messageController.text =
-                        '${_messageController.text}$emoji';
-                    _messageController.selection = TextSelection.collapsed(
-                      offset: _messageController.text.length,
-                    );
-                  },
-                );
-
-                if (wide) {
-                  return Row(
-                    children: [
-                      SizedBox(width: 320, child: contactsPane),
-                      const VerticalDivider(width: 1),
-                      Expanded(child: chatPane),
-                    ],
+          ],
+        ),
+        body: Stack(
+          children: [
+            Positioned.fill(
+              child: Builder(
+                builder: (context) {
+                  final contactsPane = _ContactsPane(
+                    threads: threads,
+                    selectedThreadId: _selectedThreadId,
+                    profileName: _store.profileName,
+                    searchController: _contactSearchController,
+                    status: _status,
+                    bluetoothRunning: _bluetoothRunning,
+                    scanning: _scanning,
+                    onEditProfile: _editProfileName,
+                    onScan: _scan,
+                    onCreateGroup: _createGroup,
+                    onSelect: (id) => setState(() {
+                      _selectedThreadId = id;
+                      _showMessageSearch = false;
+                      _messageSearchController.clear();
+                    }),
+                    onRename: _renameThread,
                   );
-                }
-                return selected == null ? contactsPane : chatPane;
-              },
+                  final chatPane = _ChatPane(
+                    thread: selected,
+                    messages: messages,
+                    controller: _messageController,
+                    searchController: _messageSearchController,
+                    onSend: _sendMessage,
+                    onAttach: _sendFile,
+                    onVoice: _toggleVoiceRecording,
+                    onCancelVoice: _cancelVoiceRecording,
+                    onPlayVoice: _playVoiceMessage,
+                    onStartLiveVoice: selected?.contact == null
+                        ? null
+                        : () => _startLiveVoiceSession(selected!.contact!),
+                    recordingVoice: _recordingVoice,
+                    voiceElapsed: _voiceElapsed,
+                    onVerify: selected?.contact == null
+                        ? null
+                        : () => _verifyContact(selected!.contact!),
+                    onRename: selected == null
+                        ? null
+                        : () => _renameThread(selected),
+                    onGroupInfo: selected?.group == null
+                        ? null
+                        : () => _openGroupInfo(selected!.group!),
+                    onBack: isWideLayout
+                        ? null
+                        : () => setState(() {
+                            _selectedThreadId = null;
+                            _showMessageSearch = false;
+                            _messageSearchController.clear();
+                          }),
+                    showSearch: _showMessageSearch,
+                    onToggleSearch: () => setState(() {
+                      _showMessageSearch = !_showMessageSearch;
+                      if (!_showMessageSearch) {
+                        _messageSearchController.clear();
+                      }
+                    }),
+                    onEmoji: (emoji) {
+                      _messageController.text =
+                          '${_messageController.text}$emoji';
+                      _messageController.selection = TextSelection.collapsed(
+                        offset: _messageController.text.length,
+                      );
+                    },
+                  );
+
+                  if (isWideLayout) {
+                    return Row(
+                      children: [
+                        SizedBox(width: 320, child: contactsPane),
+                        const VerticalDivider(width: 1),
+                        Expanded(child: chatPane),
+                      ],
+                    );
+                  }
+                  return selected == null ? contactsPane : chatPane;
+                },
+              ),
             ),
-          ),
-          if (_liveVoiceSession case final session?)
-            _LiveVoicePanel(
-              session: session,
-              elapsed: _liveVoiceElapsed,
-              quality: _liveVoiceQuality,
-              speaking: _liveVoiceSpeaking,
-              onAccept: _acceptLiveVoiceSession,
-              onReject: () => _endLiveVoiceSession(reason: 'odrzucono'),
-              onToggleSpeaking: _toggleLiveVoiceSpeaking,
-              onEnd: () => _endLiveVoiceSession(reason: 'zakończono'),
-            ),
-        ],
+            if (_liveVoiceSession case final session?)
+              _LiveVoicePanel(
+                session: session,
+                elapsed: _liveVoiceElapsed,
+                quality: _liveVoiceQuality,
+                speaking: _liveVoiceSpeaking,
+                onAccept: _acceptLiveVoiceSession,
+                onReject: () => _endLiveVoiceSession(reason: 'odrzucono'),
+                onToggleSpeaking: _toggleLiveVoiceSpeaking,
+                onEnd: () => _endLiveVoiceSession(reason: 'zakończono'),
+              ),
+          ],
+        ),
       ),
     );
   }
+
+  void _handleMainMenuAction(_MainMenuAction action) {
+    switch (action) {
+      case _MainMenuAction.bluetooth:
+        unawaited(_startBluetooth());
+        return;
+      case _MainMenuAction.security:
+        unawaited(_openSecurityCenter());
+        return;
+      case _MainMenuAction.settings:
+        unawaited(_openSettings());
+        return;
+      case _MainMenuAction.about:
+        unawaited(_openAboutApp());
+        return;
+    }
+  }
 }
+
+enum _MainMenuAction { bluetooth, security, settings, about }

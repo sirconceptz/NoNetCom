@@ -30,6 +30,8 @@
 	<string>NoNetCom używa Bluetooth do lokalnej komunikacji offline z urządzeniami w pobliżu.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>NoNetCom udostępnia bezpieczny kanał Bluetooth dla kontaktów w pobliżu.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>NoNetCom używa aparatu wyłącznie do skanowania kodów QR podczas weryfikacji kontaktów.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>NoNetCom może używać Face ID do odblokowania lokalnej blokady aplikacji.</string>
 	<key>NSMicrophoneUsageDescription</key>

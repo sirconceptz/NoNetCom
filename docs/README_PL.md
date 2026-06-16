@@ -34,6 +34,7 @@ mobilne.
 - [Architektura](../ARCHITECTURE.md)
 - [Protokół](../PROTOCOL.md)
 - [Model zagrożeń](../THREAT_MODEL.md)
+- [Macierz QA na fizycznych urządzeniach](../QA_DEVICE_MATRIX.md)
 - [Metodyka benchmarków](../BENCHMARKS.md)
 - [Proces wydania](../RELEASE.md)
 - [Historia zmian](../CHANGELOG.md)

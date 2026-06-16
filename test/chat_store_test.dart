@@ -184,6 +184,126 @@ void main() {
     expect(target.contacts.single.trustState, TrustState.verified);
   });
 
+  test('trusted contact import rejects malformed backups', () async {
+    await prepareTestAppStorage('nonetcom-store-contact-invalid-test-');
+    final store = ChatStore();
+    await store.load();
+
+    await expectLater(
+      store.importTrustedContactsBackup({
+        'type': 'other',
+        'version': 1,
+        'contacts': const [],
+      }),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(
+      store.importTrustedContactsBackup({
+        'type': 'nonetcom-trusted-contacts',
+        'version': 2,
+        'contacts': const [],
+      }),
+      throwsA(isA<FormatException>()),
+    );
+    await expectLater(
+      store.importTrustedContactsBackup({
+        'type': 'nonetcom-trusted-contacts',
+        'version': 1,
+      }),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test(
+    'trusted contact import skips invalid rows and preserves connected state',
+    () async {
+      await prepareTestAppStorage('nonetcom-store-contact-merge-test-');
+      final store = ChatStore();
+      await store.load();
+      await store.upsertContact(
+        Contact(
+          id: 'trusted-peer',
+          name: 'Stara nazwa',
+          remoteName: 'Old remote',
+          publicKey: 'old-public-key',
+          trustState: TrustState.unverified,
+          connected: true,
+          lastSeen: DateTime(2026),
+        ),
+      );
+
+      final imported = await store.importTrustedContactsBackup({
+        'type': 'nonetcom-trusted-contacts',
+        'version': 1,
+        'contacts': [
+          {
+            'id': 'trusted-peer',
+            'name': 'Nowa lokalna',
+            'remoteName': 'Remote',
+            'publicKey': 'new-public-key',
+            'lastSeen': DateTime(2026, 1, 2).toIso8601String(),
+          },
+          {'id': '', 'name': 'Pusty', 'publicKey': 'key'},
+          {'id': 'missing-key', 'name': 'Bez klucza'},
+        ],
+      });
+
+      expect(imported, 1);
+      expect(store.contacts, hasLength(1));
+      final contact = store.contacts.single;
+      expect(contact.id, 'trusted-peer');
+      expect(contact.name, 'Nowa lokalna');
+      expect(contact.remoteName, 'Remote');
+      expect(contact.publicKey, 'new-public-key');
+      expect(contact.trustState, TrustState.verified);
+      expect(contact.connected, isTrue);
+    },
+  );
+
+  test(
+    'messagesFor supports legacy contact ids and returns sorted messages',
+    () async {
+      await prepareTestAppStorage('nonetcom-store-legacy-message-test-');
+      final store = ChatStore();
+      await store.load();
+
+      await store.addMessage(
+        ChatMessage(
+          id: 'newer',
+          contactId: Contact.threadIdFor('peer-a'),
+          text: 'nowsza',
+          mine: true,
+          sentAt: DateTime(2026, 1, 2),
+        ),
+      );
+      await store.addMessage(
+        ChatMessage(
+          id: 'legacy',
+          contactId: 'peer-a',
+          text: 'starsza',
+          mine: false,
+          sentAt: DateTime(2026),
+        ),
+      );
+      await store.addMessage(
+        ChatMessage(
+          id: 'other',
+          contactId: Contact.threadIdFor('peer-b'),
+          text: 'inna',
+          mine: false,
+          sentAt: DateTime(2026),
+        ),
+      );
+
+      expect(
+        store
+            .messagesFor(Contact.threadIdFor('peer-a'))
+            .map((message) => message.id),
+        ['legacy', 'newer'],
+      );
+    },
+  );
+
   test('deleting a group removes only that group thread history', () async {
     await prepareTestAppStorage('nonetcom-store-group-test-');
     final store = ChatStore();

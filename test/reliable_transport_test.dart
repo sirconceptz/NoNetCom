@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 
 import 'package:ble_communicator/main.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +39,87 @@ void main() {
     },
   );
 
+  test('reassembles frames with duplicates and shuffled delivery', () async {
+    await prepareTestAppStorage('nonetcom-transport-fuzz-test-');
+    final sender = ReliableTransport();
+    final receiver = ReliableTransport();
+    addTearDown(sender.dispose);
+    addTearDown(receiver.dispose);
+    await sender.load();
+    await receiver.load();
+
+    final payload = jsonEncode({
+      'type': 'secure',
+      'packetId': 'message-fuzz',
+      'cipherText': 'z' * 1500,
+    });
+    final envelope = sender.enqueue('peer-a', payload);
+    final frames = [
+      ...envelope.frames,
+      envelope.frames[1],
+      envelope.frames.first,
+    ]..shuffle(Random(42));
+
+    String? completed;
+    for (final frame in frames.take(frames.length - 2)) {
+      completed = receiver.acceptFrame(frame.toJson()) ?? completed;
+    }
+    expect(completed, isNull);
+
+    for (final frame in frames.skip(frames.length - 2)) {
+      completed = receiver.acceptFrame(frame.toJson()) ?? completed;
+    }
+    expect(completed, payload);
+  });
+
+  test(
+    'persists pending outbox and clears delivered packet after reload',
+    () async {
+      await prepareTestAppStorage('nonetcom-transport-persist-test-');
+      final transport = ReliableTransport();
+      await transport.load();
+      final envelope = transport.enqueue(
+        'peer-a',
+        jsonEncode({'type': 'secure', 'packetId': 'packet-persist'}),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      transport.dispose();
+
+      final reloaded = ReliableTransport();
+      addTearDown(reloaded.dispose);
+      await reloaded.load();
+
+      expect(reloaded.pendingFor('peer-a'), hasLength(1));
+      expect(reloaded.pendingFor('peer-a').single.packetId, envelope.packetId);
+
+      final delivered = reloaded.markDelivered(envelope.packetId);
+      expect(delivered, isNotNull);
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      final emptyReload = ReliableTransport();
+      addTearDown(emptyReload.dispose);
+      await emptyReload.load();
+      expect(emptyReload.pendingCount, 0);
+    },
+  );
+
+  test('drops corrupted outbox file on load', () async {
+    final directory = await prepareTestAppStorage(
+      'nonetcom-transport-corrupt-test-',
+    );
+    final queueDir = Directory('${directory.path}/NoNetCom')
+      ..createSync(recursive: true);
+    final outboxFile = File('${queueDir.path}/nonetcom-transport-outbox.json')
+      ..writeAsStringSync('not-json');
+
+    final transport = ReliableTransport();
+    addTearDown(transport.dispose);
+    await transport.load();
+
+    expect(transport.pendingCount, 0);
+    expect(outboxFile.existsSync(), isFalse);
+  });
+
   test(
     'marks individual frame ACKs and resets fully acked frames on retry',
     () async {
@@ -57,6 +140,9 @@ void main() {
       transport.markFrameAcked('peer-a', envelope.frames.first.frameId);
       expect(envelope.frames.first.acked, isTrue);
       expect(envelope.frames.skip(1).every((frame) => frame.acked), isFalse);
+
+      transport.markFrameAcked('other-peer', envelope.frames.last.frameId);
+      expect(envelope.frames.last.acked, isFalse);
 
       for (final frame in envelope.frames.skip(1)) {
         transport.markFrameAcked('peer-a', frame.frameId);
@@ -140,4 +226,24 @@ void main() {
       expect(transport.pendingCount, 0);
     },
   );
+
+  test('clear removes in-memory and persisted outbox', () async {
+    await prepareTestAppStorage('nonetcom-transport-clear-test-');
+    final transport = ReliableTransport();
+    await transport.load();
+    transport.enqueue(
+      'peer-a',
+      jsonEncode({'type': 'secure', 'packetId': 'packet-clear'}),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    await transport.clear();
+    transport.dispose();
+
+    final reloaded = ReliableTransport();
+    addTearDown(reloaded.dispose);
+    await reloaded.load();
+
+    expect(reloaded.pendingCount, 0);
+  });
 }

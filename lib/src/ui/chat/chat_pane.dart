@@ -17,6 +17,9 @@ class _ChatPane extends StatelessWidget {
     required this.onVerify,
     required this.onRename,
     required this.onGroupInfo,
+    required this.onBack,
+    required this.showSearch,
+    required this.onToggleSearch,
     required this.onEmoji,
   });
 
@@ -35,6 +38,9 @@ class _ChatPane extends StatelessWidget {
   final VoidCallback? onVerify;
   final VoidCallback? onRename;
   final VoidCallback? onGroupInfo;
+  final VoidCallback? onBack;
+  final bool showSearch;
+  final VoidCallback onToggleSearch;
   final ValueChanged<String> onEmoji;
 
   @override
@@ -56,11 +62,18 @@ class _ChatPane extends StatelessWidget {
             onVerify: onVerify,
             onGroupInfo: onGroupInfo,
             onStartLiveVoice: onStartLiveVoice,
+            onBack: onBack,
+            onToggleSearch: onToggleSearch,
           ),
           if (selectedThread.contact?.trustState == TrustState.keyChanged)
             _KeyChangedBanner(onVerify: onVerify),
+          if (selectedThread.contact case final contact?
+              when contact.publicKey != null &&
+                  contact.trustState == TrustState.unverified)
+            _UnverifiedContactBanner(onVerify: onVerify),
           const Divider(height: 1),
-          _ConversationSearchField(controller: searchController),
+          if (showSearch)
+            _ConversationSearchField(controller: searchController),
           Expanded(
             child: _MessageList(
               thread: selectedThread,
@@ -92,6 +105,8 @@ class _ChatHeader extends StatelessWidget {
     required this.onVerify,
     required this.onGroupInfo,
     required this.onStartLiveVoice,
+    required this.onBack,
+    required this.onToggleSearch,
   });
 
   final ChatThread thread;
@@ -99,18 +114,44 @@ class _ChatHeader extends StatelessWidget {
   final VoidCallback? onVerify;
   final VoidCallback? onGroupInfo;
   final Future<void> Function()? onStartLiveVoice;
+  final VoidCallback? onBack;
+  final VoidCallback onToggleSearch;
 
   @override
   Widget build(BuildContext context) {
     final contact = thread.contact;
     final group = thread.group;
-    return ListTile(
-      leading: _ThreadAvatar(thread: thread),
-      title: Text(thread.name),
-      subtitle: Text(_subtitle(contact: contact, group: group)),
-      trailing: Wrap(
-        spacing: 4,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+      child: Row(
         children: [
+          if (onBack != null)
+            IconButton(
+              tooltip: 'Wróć do rozmów',
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back),
+            ),
+          _ThreadAvatar(thread: thread),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  thread.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text(
+                  _subtitle(contact: contact, group: group),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
           if (contact != null)
             IconButton(
               tooltip: contact.connected
@@ -122,24 +163,57 @@ class _ChatHeader extends StatelessWidget {
               icon: const Icon(Icons.call_outlined),
             ),
           IconButton(
-            tooltip: 'Edytuj nazwę',
-            onPressed: onRename,
-            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Szukaj w rozmowie',
+            onPressed: onToggleSearch,
+            icon: const Icon(Icons.search),
           ),
-          if (group != null)
-            IconButton(
-              tooltip: 'Uczestnicy grupy',
-              onPressed: onGroupInfo,
-              icon: const Icon(Icons.info_outline),
-            ),
-          IconButton(
-            tooltip: 'Zweryfikuj klucz',
-            onPressed: contact?.publicKey == null ? null : onVerify,
-            icon: Icon(
-              contact?.trustState == TrustState.verified
-                  ? Icons.verified
-                  : Icons.verified_outlined,
-            ),
+          PopupMenuButton<_ChatMenuAction>(
+            tooltip: 'Więcej opcji',
+            onSelected: (action) {
+              switch (action) {
+                case _ChatMenuAction.rename:
+                  onRename?.call();
+                  return;
+                case _ChatMenuAction.verify:
+                  onVerify?.call();
+                  return;
+                case _ChatMenuAction.groupInfo:
+                  onGroupInfo?.call();
+                  return;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: _ChatMenuAction.rename,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edytuj nazwę'),
+                ),
+              ),
+              if (group != null)
+                const PopupMenuItem(
+                  value: _ChatMenuAction.groupInfo,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.group_outlined),
+                    title: Text('Uczestnicy grupy'),
+                  ),
+                ),
+              if (contact?.publicKey != null)
+                PopupMenuItem(
+                  value: _ChatMenuAction.verify,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      contact?.trustState == TrustState.verified
+                          ? Icons.verified
+                          : Icons.verified_outlined,
+                    ),
+                    title: const Text('Zweryfikuj kontakt'),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -154,6 +228,27 @@ class _ChatHeader extends StatelessWidget {
       return 'Jeszcze bez wymiany kluczy';
     }
     return '${contact!.trustLabel} • kod: ${contact.safetyCode}';
+  }
+}
+
+enum _ChatMenuAction { rename, verify, groupInfo }
+
+class _UnverifiedContactBanner extends StatelessWidget {
+  const _UnverifiedContactBanner({required this.onVerify});
+
+  final VoidCallback? onVerify;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialBanner(
+      leading: const Icon(Icons.verified_user_outlined),
+      content: const Text(
+        'Potwierdź tożsamość tej osoby przed wysłaniem poufnych danych.',
+      ),
+      actions: [
+        TextButton(onPressed: onVerify, child: const Text('Zweryfikuj')),
+      ],
+    );
   }
 }
 

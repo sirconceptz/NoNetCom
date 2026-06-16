@@ -5,51 +5,193 @@ part of '../../../main.dart';
 extension _ContactsController on _ChatShellState {
   Future<void> _verifyContact(Contact contact) async {
     if (contact.publicKey == null) return;
-    final verified = await showDialog<bool>(
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Zweryfikuj klucz'),
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Zweryfikuj: ${contact.name}',
+                style: Theme.of(sheetContext).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Jedna osoba pokazuje swój kod, druga go skanuje. Potem zamieńcie się rolami, aby obie strony oznaczyły kontakt jako zaufany.',
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _showOwnVerificationQr(contact);
+                },
+                icon: const Icon(Icons.qr_code_2),
+                label: const Text('Pokaż mój kod'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _scanContactVerificationQr(contact);
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Skanuj kod kontaktu'),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  _compareSafetyCode(contact);
+                },
+                icon: const Icon(Icons.pin_outlined),
+                label: const Text('Porównaj kod ręcznie'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showOwnVerificationQr(Contact contact) async {
+    final payload = VerificationQrPayload(
+      profileName: _store.profileName,
+      publicKey: base64Encode(_crypto.cachedPublicKey),
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Mój kod weryfikacyjny'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            QrImageView(
-              data: jsonEncode({
-                'app': 'NoNetCom',
-                'name': contact.name,
-                'publicKey': contact.publicKey,
-                'code': contact.safetyCode,
-              }),
-              size: 180,
-            ),
+            QrImageView(data: payload.encode(), size: 220),
             const SizedBox(height: 12),
             Text(
-              contact.safetyCode,
-              style: Theme.of(context).textTheme.titleMedium,
+              _store.profileName,
+              style: Theme.of(dialogContext).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Porównaj ten kod z kodem na drugim telefonie lub zeskanuj QR.',
+            Text(
+              payload.safetyCode,
+              style: Theme.of(dialogContext).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Poproś ${contact.name}, aby wybrał „Skanuj kod kontaktu”.',
               textAlign: TextAlign.center,
             ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Anuluj'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Kody zgodne'),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Zamknij'),
           ),
         ],
       ),
     );
-    if (verified == true) {
-      await _store.verifyContact(contact.id);
-      await _recordDiagnostic('contact_verified', 'Zweryfikowano kontakt');
-      setState(() => _status = 'Klucz kontaktu zweryfikowany');
+  }
+
+  Future<void> _scanContactVerificationQr(Contact contact) async {
+    final rawValue = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => _QrScannerPage(contactName: contact.name),
+      ),
+    );
+    if (!mounted || rawValue == null) return;
+
+    final payload = VerificationQrPayload.tryParse(rawValue);
+    if (payload == null) {
+      await _showVerificationError(
+        'Nieprawidłowy kod',
+        'Ten kod QR nie jest kodem weryfikacyjnym NoNetCom.',
+      );
+      return;
     }
+    if (!payload.matches(contact)) {
+      await _recordDiagnostic(
+        'contact_verification_mismatch',
+        'Kod QR nie pasuje do zapisanego klucza kontaktu',
+        level: DiagnosticLevel.warning,
+      );
+      await _showVerificationError(
+        'Klucze nie są zgodne',
+        'Kod należy do profilu „${payload.profileName}”, ale nie pasuje do klucza zapisanego dla ${contact.name}. Nie oznaczono kontaktu jako zaufanego.',
+      );
+      return;
+    }
+    await _markContactVerified(contact);
+  }
+
+  Future<void> _compareSafetyCode(Contact contact) async {
+    final verified = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Porównaj kod'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Na telefonie kontaktu otwórz jego własny kod weryfikacyjny. Oba kody muszą być identyczne.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            SelectableText(
+              contact.safetyCode,
+              style: Theme.of(dialogContext).textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Anuluj'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Kody są zgodne'),
+          ),
+        ],
+      ),
+    );
+    if (verified == true) await _markContactVerified(contact);
+  }
+
+  Future<void> _markContactVerified(Contact contact) async {
+    await _store.verifyContact(contact.id);
+    await _recordDiagnostic('contact_verified', 'Zweryfikowano kontakt');
+    if (!mounted) return;
+    setState(() => _status = 'Kontakt ${contact.name} jest zweryfikowany');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Zweryfikowano kontakt ${contact.name}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _showVerificationError(String title, String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.gpp_bad_outlined),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Rozumiem'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _renameContact(Contact contact) async {

@@ -55,6 +55,30 @@ void main() {
         ),
         throwsA(isA<SecretBoxAuthenticationError>()),
       );
+      await expectLater(
+        bob.decryptText(
+          peerPublicKey: bobPublic,
+          packetId: 'packet-1',
+          protocolVersion: encrypted.protocolVersion,
+          counter: encrypted.counter,
+          nonce: encrypted.nonce,
+          cipherText: encrypted.cipherText,
+          mac: encrypted.mac,
+        ),
+        throwsA(isA<SecretBoxAuthenticationError>()),
+      );
+      await expectLater(
+        bob.decryptText(
+          peerPublicKey: alicePublic,
+          packetId: 'packet-1',
+          protocolVersion: ChatCrypto.protocolVersion + 1,
+          counter: encrypted.counter,
+          nonce: encrypted.nonce,
+          cipherText: encrypted.cipherText,
+          mac: encrypted.mac,
+        ),
+        throwsA(isA<FormatException>()),
+      );
     },
   );
 
@@ -93,4 +117,25 @@ void main() {
       expect(reloadedBob.hasSeenCounter(alicePublic, first.counter), isTrue);
     },
   );
+
+  test('E2EE replay window retains only the latest 512 counters', () async {
+    await prepareTestAppStorage('nonetcom-crypto-window-test-');
+    final algorithm = X25519();
+    final alicePair = await algorithm.newKeyPair();
+    final bobPair = await algorithm.newKeyPair();
+    final alicePublic = base64Encode(
+      (await alicePair.extractPublicKey()).bytes,
+    );
+    final bob = ChatCrypto(identity: bobPair);
+    await bob.loadOrCreate();
+
+    for (var counter = 1; counter <= 520; counter += 1) {
+      await bob.markCounterSeen(alicePublic, counter);
+    }
+
+    expect(bob.hasSeenCounter(alicePublic, 1), isFalse);
+    expect(bob.hasSeenCounter(alicePublic, 8), isFalse);
+    expect(bob.hasSeenCounter(alicePublic, 9), isTrue);
+    expect(bob.hasSeenCounter(alicePublic, 520), isTrue);
+  });
 }

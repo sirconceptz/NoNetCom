@@ -68,15 +68,23 @@ extension _LifecycleController on _ChatShellState {
     }
   }
 
+  Future<void> _skipOnboarding() async {
+    await _store.markOnboardingSeen();
+    await _recordDiagnostic('onboarding_skipped', 'Pominięto onboarding');
+    if (!mounted) return;
+    setState(() {
+      _showOnboarding = false;
+      _status = 'Konfigurację możesz dokończyć w ustawieniach';
+    });
+  }
+
   Future<void> _showOnboardingIfNeeded() async {
     if (_store.onboardingSeen || _disposed || !mounted) return;
     setState(() => _showOnboarding = true);
   }
 
   Future<void> _startBluetooth() async {
-    setState(
-      () => _status = 'Uruchamiam Bluetooth i proszę system o uprawnienia...',
-    );
+    setState(() => _status = 'Uruchamiam komunikację z osobami w pobliżu...');
     try {
       await _ble.start(
         displayName: _store.profileName,
@@ -85,7 +93,7 @@ extension _LifecycleController on _ChatShellState {
       await _recordDiagnostic('ble_start', 'Bluetooth LE uruchomiony');
       setState(() {
         _bluetoothRunning = true;
-        _status = 'Reklamuję i nasłuchuję przez Bluetooth LE';
+        _status = 'Jesteś widoczny dla osób w pobliżu';
       });
     } on PlatformException catch (error) {
       await _recordDiagnostic(
@@ -131,5 +139,39 @@ extension _LifecycleController on _ChatShellState {
     }
     await _recordDiagnostic('profile_renamed', 'Zmieniono nazwę profilu');
     setState(() => _status = 'Nazwa profilu zapisana');
+  }
+
+  Future<void> _editProfileName() async {
+    final controller = TextEditingController(text: _store.profileName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Twoja nazwa'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Nazwa widoczna dla osób w pobliżu',
+          ),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Anuluj'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Zapisz'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty || name == _store.profileName) return;
+    _nameController.text = name;
+    await _saveName();
   }
 }

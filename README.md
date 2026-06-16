@@ -143,6 +143,8 @@ The full procedure and result template are in
 - iOS uses Core Bluetooth state restoration for central and peripheral roles.
 - E2EE keys are directional; message counters are monotonic and persistent.
 - The app never requires a delivery server, account service or cloud database.
+- Regression tests cover E2EE context binding, replay counters, shuffled BLE
+  frames, duplicate frames, persistent outbox recovery and diagnostic privacy.
 
 ## Documentation
 
@@ -154,6 +156,7 @@ The full procedure and result template are in
 - [Protocol specification](PROTOCOL.md)
 - [Threat model](THREAT_MODEL.md)
 - [Architecture](ARCHITECTURE.md)
+- [Physical device QA matrix](QA_DEVICE_MATRIX.md)
 - [Benchmark methodology](BENCHMARKS.md)
 - [Release checklist](RELEASE.md)
 - [Changelog](CHANGELOG.md)

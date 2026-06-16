@@ -1,5 +1,58 @@
 part of '../../main.dart';
 
+class VerificationQrPayload {
+  const VerificationQrPayload({
+    required this.profileName,
+    required this.publicKey,
+  });
+
+  static const int version = 1;
+  static const String type = 'identity-verification';
+
+  final String profileName;
+  final String publicKey;
+
+  String get safetyCode => ChatCrypto.fingerprintCode(publicKey);
+
+  String encode() => jsonEncode({
+    'app': _serviceName,
+    'type': type,
+    'version': version,
+    'profileName': profileName,
+    'publicKey': publicKey,
+  });
+
+  bool matches(Contact contact) =>
+      contact.publicKey != null && contact.publicKey == publicKey;
+
+  static VerificationQrPayload? tryParse(String rawValue) {
+    try {
+      final decoded = jsonDecode(rawValue);
+      if (decoded is! Map<String, dynamic> ||
+          decoded['app'] != _serviceName ||
+          decoded['type'] != type ||
+          decoded['version'] != version) {
+        return null;
+      }
+      final profileName = decoded['profileName'];
+      final publicKey = decoded['publicKey'];
+      if (profileName is! String ||
+          profileName.trim().isEmpty ||
+          publicKey is! String ||
+          publicKey.isEmpty) {
+        return null;
+      }
+      base64Decode(publicKey);
+      return VerificationQrPayload(
+        profileName: profileName.trim(),
+        publicKey: publicKey,
+      );
+    } on FormatException {
+      return null;
+    }
+  }
+}
+
 class Contact {
   const Contact({
     required this.id,

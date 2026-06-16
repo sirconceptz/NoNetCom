@@ -4,10 +4,12 @@ class _ContactsPane extends StatelessWidget {
   const _ContactsPane({
     required this.threads,
     required this.selectedThreadId,
-    required this.nameController,
+    required this.profileName,
     required this.searchController,
     required this.status,
-    required this.onSaveName,
+    required this.bluetoothRunning,
+    required this.scanning,
+    required this.onEditProfile,
     required this.onScan,
     required this.onCreateGroup,
     required this.onSelect,
@@ -16,10 +18,12 @@ class _ContactsPane extends StatelessWidget {
 
   final List<ChatThread> threads;
   final String? selectedThreadId;
-  final TextEditingController nameController;
+  final String profileName;
   final TextEditingController searchController;
   final String status;
-  final Future<void> Function() onSaveName;
+  final bool bluetoothRunning;
+  final bool scanning;
+  final Future<void> Function() onEditProfile;
   final Future<void> Function() onScan;
   final Future<void> Function() onCreateGroup;
   final ValueChanged<String> onSelect;
@@ -31,43 +35,99 @@ class _ContactsPane extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Twoja nazwa',
-                    suffixIcon: IconButton(
-                      tooltip: 'Zapisz nazwę',
-                      icon: const Icon(Icons.check),
-                      onPressed: onSaveName,
+                Row(
+                  children: [
+                    CircleAvatar(
+                      child: Icon(
+                        bluetoothRunning
+                            ? Icons.bluetooth_connected
+                            : Icons.bluetooth_disabled,
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            profileName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(
+                            bluetoothRunning
+                                ? 'Widoczny w pobliżu'
+                                : 'Bluetooth wyłączony',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Edytuj swoją nazwę',
+                      onPressed: onEditProfile,
+                      icon: const Icon(Icons.edit_outlined),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: searchController,
                   decoration: const InputDecoration(
-                    labelText: 'Szukaj kontaktów',
+                    hintText: 'Szukaj rozmów',
                     prefixIcon: Icon(Icons.search),
                   ),
                 ),
                 const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: onScan,
-                  icon: const Icon(Icons.travel_explore),
-                  label: const Text('Znajdź osoby w pobliżu'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: scanning ? null : onScan,
+                        icon: scanning
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.person_search_outlined),
+                        label: Text(scanning ? 'Szukam...' : 'Znajdź osoby'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.outlined(
+                      tooltip: 'Utwórz grupę do 6 osób',
+                      onPressed: onCreateGroup,
+                      icon: const Icon(Icons.group_add_outlined),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: onCreateGroup,
-                  icon: const Icon(Icons.group_add_outlined),
-                  label: const Text('Utwórz grupę do 6 osób'),
-                ),
-                const SizedBox(height: 12),
-                Text(status, style: Theme.of(context).textTheme.bodySmall),
+                if (status.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          status,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

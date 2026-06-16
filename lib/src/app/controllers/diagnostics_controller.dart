@@ -3,6 +3,127 @@
 part of '../../../main.dart';
 
 extension _DiagnosticsController on _ChatShellState {
+  Future<void> _openSettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ustawienia'),
+        content: SizedBox(
+          width: 480,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.person_outline),
+                title: const Text('Nazwa profilu'),
+                subtitle: Text(_store.profileName),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  unawaited(_editProfileName());
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.shield_outlined),
+                title: const Text('Bezpieczeństwo'),
+                subtitle: const Text('PIN, tożsamość i szyfrowanie'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  unawaited(_openSecurityCenter());
+                },
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.tune),
+                title: const Text('Zaawansowane'),
+                subtitle: const Text(
+                  'Diagnostyka, logi, dane lokalne i informacje techniczne',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  unawaited(_openAdvancedSettings());
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Zamknij'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openAdvancedSettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Zaawansowane'),
+        content: SizedBox(
+          width: 480,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.monitor_heart_outlined),
+                title: const Text('Diagnostyka połączenia'),
+                subtitle: const Text(
+                  'Stan Bluetooth, kolejka pakietów i uprawnienia',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  unawaited(_openDiagnostics());
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.storage_outlined),
+                title: const Text('Dane lokalne i logi'),
+                subtitle: const Text(
+                  'Backupy, raporty, logi błędów i czyszczenie danych',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  unawaited(_openDataCenter());
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.code),
+                title: const Text('Informacje techniczne'),
+                subtitle: const Text(
+                  'Wersja, zgody systemowe i stan komponentów',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  unawaited(_openTechnicalInfo());
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Zamknij'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _exportDiagnosticsReport() async {
     final file = await _diagnosticsReport.export(_diagnosticsSnapshot);
     await _recordDiagnostic('diagnostics_exported', 'Zapisano raport');
@@ -159,12 +280,29 @@ extension _DiagnosticsController on _ChatShellState {
   }
 
   Future<void> _openAboutApp() async {
+    final package = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    showAboutDialog(
+      context: context,
+      applicationName: package.appName,
+      applicationVersion: '${package.version}+${package.buildNumber}',
+      applicationIcon: const CircleAvatar(child: Icon(Icons.offline_bolt)),
+      children: const [
+        SizedBox(height: 8),
+        Text(
+          'Prywatny komunikator do rozmów bez internetu, wykorzystujący Bluetooth i szyfrowanie end-to-end.',
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openTechnicalInfo() async {
     final info = await _loadAboutStatus();
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('O aplikacji'),
+        title: const Text('Informacje techniczne'),
         content: SizedBox(
           width: 520,
           child: ListView(

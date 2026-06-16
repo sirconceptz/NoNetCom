@@ -57,6 +57,18 @@ flutter build ios --debug --no-codesign
 plutil -lint ios/Runner/Info.plist
 ```
 
+## Physical Device QA
+
+Przed publikacją wykonaj macierz z [QA_DEVICE_MATRIX.md](QA_DEVICE_MATRIX.md):
+
+- Android ↔ Android;
+- Android ↔ iOS w obu kierunkach;
+- iOS ↔ iOS.
+
+Wyniki `FAIL` i `FLAKY` muszą mieć decyzję wydaniową lub link do znanego
+problemu. Wyniki wydajnościowe publikuj dopiero po osobnym przebiegu według
+[BENCHMARKS.md](BENCHMARKS.md).
+
 ## Store Review Notes
 
 - Test offline wymaga dwóch fizycznych urządzeń.

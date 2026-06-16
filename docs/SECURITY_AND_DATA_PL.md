@@ -21,6 +21,23 @@ Kod bezpieczeństwa kontaktu jest skróconym fingerprintem publicznego klucza.
 Pełny opis znajduje się w [PROTOCOL.md](../PROTOCOL.md), a założenia i
 ograniczenia w [THREAT_MODEL.md](../THREAT_MODEL.md).
 
+## Model zagrożeń w skrócie
+
+NoNetCom chroni treść wiadomości, plików i segmentów głosowych przesyłanych
+między zweryfikowanymi urządzeniami. Zakłada, że użytkownik porówna kod QR lub
+kod bezpieczeństwa przy budowaniu zaufania.
+
+Aplikacja nie ukrywa samego faktu używania Bluetooth, czasu transmisji, rozmiaru
+zaszyfrowanych pakietów ani obecności urządzenia w pobliżu. Nie chroni też
+telefonu przejętego przez malware, urządzenia z rootem/jailbreakiem ani
+odblokowanej aplikacji pozostawionej osobie trzeciej.
+
+Aktywny atakujący w pobliżu może opóźniać, gubić, duplikować lub modyfikować
+pakiety. Szyfrowanie i AAD mają wykrywać modyfikacje, a trwałe okno replay ma
+blokować ponowne przetwarzanie wcześniej uwierzytelnionych pakietów. Atakujący
+może jednak spowodować brak dostępności przez zakłócanie radia lub zalewanie
+kanału.
+
 ## Dane lokalne
 
 `SharedPreferences` przechowuje między innymi:
@@ -53,6 +70,25 @@ rozwiązania o podwyższonym poziomie bezpieczeństwa.
 Logi mogą zawierać komunikaty błędów, stack trace, wersję aplikacji i techniczne
 zdarzenia transportu. Kod nie powinien logować treści wiadomości ani zawartości
 plików. Przed wysłaniem użytkownik ma możliwość ręcznego podglądu.
+
+Regresję prywatności raportów zabezpieczają testy, które sprawdzają brak pól
+wiadomości, plików, kluczy prywatnych i danych kryptograficznych w eksporcie
+diagnostycznym.
+
+## Checklista bezpieczeństwa przed wydaniem
+
+- uruchomić `flutter analyze` i `flutter test`;
+- potwierdzić testy E2EE: zły klucz, zły `packetId`, nieznana wersja protokołu,
+  replay window;
+- potwierdzić testy transportu: duplikaty ramek, losowa kolejność, retry,
+  trwały outbox i `deliveryAck`;
+- sprawdzić, że logi i raporty nie zawierają treści rozmów ani kluczy
+  prywatnych;
+- wykonać testy na fizycznych urządzeniach Android-Android, Android-iOS i
+  iOS-iOS;
+- potwierdzić ostrzeżenie przy zmianie klucza zweryfikowanego kontaktu;
+- upewnić się, że dokumentacja i polityka prywatności opisują aktualny stan
+  aplikacji.
 
 ## Backup tożsamości
 

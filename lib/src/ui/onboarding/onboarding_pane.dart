@@ -1,6 +1,6 @@
 part of '../../../main.dart';
 
-class _OnboardingPane extends StatelessWidget {
+class _OnboardingPane extends StatefulWidget {
   const _OnboardingPane({
     required this.profileName,
     required this.nameController,
@@ -9,8 +9,8 @@ class _OnboardingPane extends StatelessWidget {
     required this.onRequestPermissions,
     required this.onOpenSettings,
     required this.onStartBluetooth,
-    required this.onScan,
     required this.onFinish,
+    required this.onSkip,
   });
 
   final String profileName;
@@ -20,118 +20,271 @@ class _OnboardingPane extends StatelessWidget {
   final Future<void> Function() onRequestPermissions;
   final Future<bool> Function() onOpenSettings;
   final Future<void> Function() onStartBluetooth;
-  final Future<void> Function() onScan;
   final Future<void> Function() onFinish;
+  final Future<void> Function() onSkip;
+
+  @override
+  State<_OnboardingPane> createState() => _OnboardingPaneState();
+}
+
+class _OnboardingPaneState extends State<_OnboardingPane> {
+  static const _pageCount = 4;
+
+  final _pageController = PageController();
+  int _page = 0;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _next() async {
+    if (_busy) return;
+    if (_page == 1 && widget.nameController.text.trim().isNotEmpty) {
+      setState(() => _busy = true);
+      await widget.onSaveName();
+      if (!mounted) return;
+      setState(() => _busy = false);
+    }
+    if (_page == _pageCount - 1) {
+      await widget.onFinish();
+      return;
+    }
+    await _pageController.nextPage(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _back() {
+    return _pageController.previousPage(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _skip() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    await widget.onSkip();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLast = _page == _pageCount - 1;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('NoNetCom'),
+        actions: [
+          TextButton(
+            onPressed: _busy ? null : _skip,
+            child: const Text('Pomiń'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (page) => setState(() => _page = page),
+                children: [
+                  const _OnboardingPage(
+                    icon: Icons.forum_outlined,
+                    title: 'Rozmawiaj bez internetu',
+                    body:
+                        'NoNetCom łączy telefony znajdujące się w pobliżu przez Bluetooth. Wiadomości pozostają na Twoich urządzeniach.',
+                    note:
+                        'W trybie samolotowym możesz ręcznie ponownie włączyć Bluetooth.',
+                  ),
+                  _OnboardingPage(
+                    icon: Icons.badge_outlined,
+                    title: 'Jak mają Cię widzieć inni?',
+                    body:
+                        'Ta nazwa będzie widoczna podczas wyszukiwania osób w pobliżu. Możesz ją później zmienić w ustawieniach.',
+                    content: TextField(
+                      controller: widget.nameController,
+                      autofocus: false,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.done,
+                      decoration: InputDecoration(
+                        labelText: 'Twoja nazwa',
+                        hintText: widget.profileName,
+                        prefixIcon: const Icon(Icons.person_outline),
+                      ),
+                    ),
+                  ),
+                  _OnboardingPage(
+                    icon: widget.bluetoothRunning
+                        ? Icons.bluetooth_connected
+                        : Icons.bluetooth_searching,
+                    title: 'Znajdź osoby w pobliżu',
+                    body:
+                        'Bluetooth służy do wykrywania kontaktów i przesyłania rozmów. Powiadomienia informują o nowych wiadomościach, a mikrofon obsługuje głos.',
+                    content: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: widget.onRequestPermissions,
+                          icon: const Icon(Icons.verified_user_outlined),
+                          label: const Text('Przyznaj potrzebne zgody'),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: widget.onStartBluetooth,
+                          icon: Icon(
+                            widget.bluetoothRunning
+                                ? Icons.check_circle_outline
+                                : Icons.bluetooth,
+                          ),
+                          label: Text(
+                            widget.bluetoothRunning
+                                ? 'Bluetooth jest gotowy'
+                                : 'Uruchom Bluetooth',
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: widget.onOpenSettings,
+                          icon: const Icon(Icons.settings_outlined),
+                          label: const Text('Otwórz ustawienia systemowe'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const _OnboardingPage(
+                    icon: Icons.verified_user_outlined,
+                    title: 'Potwierdzaj właściwą osobę',
+                    body:
+                        'Po dodaniu kontaktu zeskanujcie nawzajem swoje kody QR. Dzięki temu masz pewność, że szyfrowana rozmowa trafia do właściwej osoby.',
+                    note:
+                        'NoNetCom ostrzeże Cię, jeżeli klucz kontaktu kiedykolwiek się zmieni.',
+                  ),
+                ],
+              ),
+            ),
+            _OnboardingProgress(current: _page, count: _pageCount),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: _page == 0
+                          ? null
+                          : IconButton.outlined(
+                              tooltip: 'Poprzednia karta',
+                              onPressed: _busy ? null : _back,
+                              icon: const Icon(Icons.arrow_back),
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _next,
+                        icon: _busy
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                isLast
+                                    ? Icons.chat_bubble_outline
+                                    : Icons.arrow_forward,
+                              ),
+                        label: Text(isLast ? 'Przejdź do rozmów' : 'Dalej'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OnboardingPage extends StatelessWidget {
+  const _OnboardingPage({
+    required this.icon,
+    required this.title,
+    required this.body,
+    this.note,
+    this.content,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final String? note;
+  final Widget? content;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('NoNetCom')),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 980),
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text(
-                  'Start offline',
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(icon, size: 34, color: scheme.onPrimaryContainer),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'NoNetCom działa bez internetu przez Bluetooth. W samolocie włącz tryb samolotowy, a potem ręcznie włącz Bluetooth.',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(height: 24),
-                _OnboardingStep(
-                  number: 1,
-                  icon: Icons.badge_outlined,
-                  title: 'Nazwa profilu',
-                  body:
-                      'Ta nazwa jest pokazywana osobom w pobliżu podczas parowania. Możesz ją zmienić później.',
-                  trailing: TextField(
-                    controller: nameController,
-                    decoration: InputDecoration(
-                      labelText: 'Nazwa',
-                      hintText: profileName,
-                      suffixIcon: IconButton(
-                        tooltip: 'Zapisz nazwę',
-                        onPressed: onSaveName,
-                        icon: const Icon(Icons.save_outlined),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                body,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  height: 1.45,
+                ),
+              ),
+              if (content != null) ...[const SizedBox(height: 28), content!],
+              if (note != null) ...[
+                const SizedBox(height: 28),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 20, color: scheme.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        note!,
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    ),
-                  ),
-                ),
-                _OnboardingStep(
-                  number: 2,
-                  icon: Icons.settings_bluetooth,
-                  title: 'Uprawnienia Bluetooth',
-                  body:
-                      'Aplikacja potrzebuje Bluetooth, skanowania, powiadomień i mikrofonu do wiadomości głosowych 1:1. Android może pytać też o uprawnienia powiązane ze skanowaniem BLE.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: onRequestPermissions,
-                      icon: const Icon(Icons.verified_user_outlined),
-                      label: const Text('Poproś o uprawnienia'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: onOpenSettings,
-                      icon: const Icon(Icons.tune_outlined),
-                      label: const Text('Ustawienia systemowe'),
-                    ),
-                  ],
-                ),
-                _OnboardingStep(
-                  number: 3,
-                  icon: bluetoothRunning
-                      ? Icons.bluetooth_connected
-                      : Icons.bluetooth_disabled,
-                  title: 'Bluetooth LE',
-                  body:
-                      'Po uruchomieniu aplikacja zacznie nasłuchiwać kontaktów i reklamować Twoją obecność lokalnie.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: onStartBluetooth,
-                      icon: Icon(
-                        bluetoothRunning
-                            ? Icons.check_circle_outline
-                            : Icons.power_settings_new,
-                      ),
-                      label: Text(
-                        bluetoothRunning
-                            ? 'Bluetooth aktywny'
-                            : 'Uruchom Bluetooth',
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: onScan,
-                      icon: const Icon(Icons.radar),
-                      label: const Text('Skanuj kontakty'),
-                    ),
-                  ],
-                ),
-                _OnboardingStep(
-                  number: 4,
-                  icon: Icons.enhanced_encryption_outlined,
-                  title: 'Weryfikacja zaufania',
-                  body:
-                      'Po znalezieniu kontaktu porównaj kod bezpieczeństwa lub QR. Aplikacja ostrzeże, gdy klucz kontaktu się zmieni.',
-                  actions: [
-                    FilledButton.icon(
-                      onPressed: onFinish,
-                      icon: const Icon(Icons.arrow_forward),
-                      label: const Text('Przejdź do czatu'),
                     ),
                   ],
                 ),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -139,95 +292,34 @@ class _OnboardingPane extends StatelessWidget {
   }
 }
 
-class _OnboardingStep extends StatelessWidget {
-  const _OnboardingStep({
-    required this.number,
-    required this.icon,
-    required this.title,
-    required this.body,
-    this.trailing,
-    this.actions = const [],
-  });
+class _OnboardingProgress extends StatelessWidget {
+  const _OnboardingProgress({required this.current, required this.count});
 
-  final int number;
-  final IconData icon;
-  final String title;
-  final String body;
-  final Widget? trailing;
-  final List<Widget> actions;
+  final int current;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: scheme.outlineVariant),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxWidth < 620;
-              final header = Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: scheme.primaryContainer,
-                    foregroundColor: scheme.onPrimaryContainer,
-                    child: Text('$number'),
-                  ),
-                  const SizedBox(width: 12),
-                  Icon(icon, color: scheme.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          body,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: scheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-
-              final content = <Widget>[
-                header,
-                if (trailing != null) ...[
-                  const SizedBox(height: 14),
-                  trailing!,
-                ],
-                if (actions.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Wrap(spacing: 8, runSpacing: 8, children: actions),
-                ],
-              ];
-              if (compact) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: content,
-                );
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: content,
-              );
-            },
-          ),
-        ),
+    return Semantics(
+      label: 'Krok ${current + 1} z $count',
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var index = 0; index < count; index++)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: index == current ? 24 : 8,
+              height: 8,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: index == current
+                    ? scheme.primary
+                    : scheme.outlineVariant,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+        ],
       ),
     );
   }

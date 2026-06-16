@@ -107,9 +107,23 @@ flutter build ios --debug --no-codesign
 plutil -lint ios/Runner/Info.plist
 ```
 
-Zmiany w BLE, pracy w tle, plikach lub audio wymagają dodatkowo testu na dwóch
-fizycznych urządzeniach. Scenariusze wydajnościowe opisuje
-[BENCHMARKS.md](../BENCHMARKS.md).
+Zmiany w BLE, pracy w tle, plikach lub audio wymagają dodatkowo testu na
+fizycznych urządzeniach według [QA_DEVICE_MATRIX.md](../QA_DEVICE_MATRIX.md).
+Scenariusze wydajnościowe opisuje [BENCHMARKS.md](../BENCHMARKS.md).
+
+## Testy bezpieczeństwa i niezawodności
+
+Priorytetem są testy, które blokują regresje trudne do zauważenia w UI:
+
+- E2EE odrzuca zły klucz, zmieniony `packetId`, obcą wersję protokołu i replay;
+- transport odtwarza payload mimo losowej kolejności oraz duplikatów ramek;
+- outbox przetrwa restart aplikacji i usuwa pakiet dopiero po `deliveryAck`;
+- zmiana klucza zweryfikowanego kontaktu przełącza go w stan ostrzegawczy;
+- raport diagnostyczny nie zawiera treści wiadomości, nazw plików ani kluczy
+  prywatnych.
+
+Przy dodawaniu nowej funkcji komunikacyjnej najpierw dopisz przypadek
+regresyjny do `test/`, a dopiero potem rozszerz UI.
 
 ## Dodawanie funkcji
 
