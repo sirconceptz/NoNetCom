@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 Future<Directory> prepareTestAppStorage(String prefix) async {
   SharedPreferences.setMockInitialValues({});
-  final directory = await Directory.systemTemp.createTemp(prefix);
+  final directory = Directory.systemTemp.createTempSync(prefix);
   PathProviderPlatform.instance = _TestPathProviderPlatform(directory.path);
   return directory;
 }

@@ -77,11 +77,11 @@ class Contact {
   String get threadId => threadIdFor(id);
 
   String get trustLabel {
-    if (publicKey == null) return 'brak klucza';
+    if (publicKey == null) return 'czeka na połączenie';
     return switch (trustState) {
-      TrustState.unverified => 'niezweryfikowany',
-      TrustState.verified => 'zweryfikowany',
-      TrustState.keyChanged => 'klucz zmieniony',
+      TrustState.unverified => 'do potwierdzenia',
+      TrustState.verified => 'zaufany',
+      TrustState.keyChanged => 'wymaga sprawdzenia',
     };
   }
 
@@ -366,7 +366,7 @@ class ChatMessage {
 enum MessageAttachmentType { file, voice }
 
 enum MessageStatus {
-  sending('wysyłanie'),
+  sending('wysyłam'),
   delivered('dostarczono'),
   failed('nie udało się');
 

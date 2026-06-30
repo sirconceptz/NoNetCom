@@ -16,7 +16,13 @@ extension _MessageController on _ChatShellState {
       return;
     }
     if (contact.publicKey == null) {
-      setState(() => _status = 'Kontakt nie ma jeszcze klucza E2EE');
+      setState(
+        () => _status =
+            'Czekam na bezpieczne połączenie. Zostaw oba telefony blisko siebie.',
+      );
+      _showFeedback(
+        'Czekam na połączenie z tą osobą. Wiadomość wyślesz, gdy będzie gotowe.',
+      );
       await _sendHello(contact.id);
       return;
     }
@@ -40,7 +46,7 @@ extension _MessageController on _ChatShellState {
     _messageController.clear();
     await _sendQueuedEnvelope(queued);
     await _recordDiagnostic('message_queued', 'Wiadomość dodana do kolejki');
-    setState(() => _status = 'Wysyłam zaszyfrowaną wiadomość');
+    setState(() => _status = 'Wysyłam wiadomość');
   }
 
   Future<void> _sendGroupMessage(ChatGroup group) async {
@@ -52,7 +58,8 @@ extension _MessageController on _ChatShellState {
         .where((contact) => contact.publicKey != null)
         .toList();
     if (members.isEmpty) {
-      setState(() => _status = 'Grupa nie ma dostępnych kontaktów E2EE');
+      setState(() => _status = 'W grupie nie ma teraz gotowych osób');
+      _showFeedback('Żadna osoba w grupie nie ma teraz gotowego połączenia.');
       return;
     }
 
@@ -148,6 +155,12 @@ extension _MessageController on _ChatShellState {
       case 'liveVoiceEnd':
       case 'liveVoiceSegment':
         await _handleLiveVoicePayload(peerId, contact, payload);
+      case 'connectionCheck':
+        await _recordDiagnostic(
+          'connection_check_received',
+          'Odebrano test połączenia',
+        );
+        setState(() => _status = 'Połączenie z ${contact.name} działa');
     }
     await _sendDeliveryAck(peerId, packetId);
   }

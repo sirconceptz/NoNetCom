@@ -17,6 +17,7 @@ class _ChatPane extends StatelessWidget {
     required this.onVerify,
     required this.onRename,
     required this.onGroupInfo,
+    required this.onConnectionCheck,
     required this.onBack,
     required this.showSearch,
     required this.onToggleSearch,
@@ -38,6 +39,7 @@ class _ChatPane extends StatelessWidget {
   final VoidCallback? onVerify;
   final VoidCallback? onRename;
   final VoidCallback? onGroupInfo;
+  final Future<void> Function()? onConnectionCheck;
   final VoidCallback? onBack;
   final bool showSearch;
   final VoidCallback onToggleSearch;
@@ -49,7 +51,8 @@ class _ChatPane extends StatelessWidget {
     if (selectedThread == null) {
       return const _EmptyState(
         icon: Icons.forum_outlined,
-        message: 'Wybierz kontakt lub znajdź osobę w pobliżu.',
+        title: 'Nie wybrano rozmowy',
+        message: 'Wybierz kontakt z listy albo znajdź osobę w pobliżu.',
       );
     }
 
@@ -61,10 +64,14 @@ class _ChatPane extends StatelessWidget {
             onRename: onRename,
             onVerify: onVerify,
             onGroupInfo: onGroupInfo,
+            onConnectionCheck: onConnectionCheck,
             onStartLiveVoice: onStartLiveVoice,
             onBack: onBack,
             onToggleSearch: onToggleSearch,
           ),
+          if (selectedThread.contact case final contact?
+              when contact.publicKey == null)
+            _ConnectionPendingBanner(),
           if (selectedThread.contact?.trustState == TrustState.keyChanged)
             _KeyChangedBanner(onVerify: onVerify),
           if (selectedThread.contact case final contact?
@@ -104,6 +111,7 @@ class _ChatHeader extends StatelessWidget {
     required this.onRename,
     required this.onVerify,
     required this.onGroupInfo,
+    required this.onConnectionCheck,
     required this.onStartLiveVoice,
     required this.onBack,
     required this.onToggleSearch,
@@ -113,6 +121,7 @@ class _ChatHeader extends StatelessWidget {
   final VoidCallback? onRename;
   final VoidCallback? onVerify;
   final VoidCallback? onGroupInfo;
+  final Future<void> Function()? onConnectionCheck;
   final Future<void> Function()? onStartLiveVoice;
   final VoidCallback? onBack;
   final VoidCallback onToggleSearch;
@@ -121,8 +130,9 @@ class _ChatHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final contact = thread.contact;
     final group = thread.group;
+    final compact = MediaQuery.sizeOf(context).width < 390;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 6, 4, 6),
+      padding: EdgeInsets.fromLTRB(compact ? 0 : 4, 6, 4, 6),
       child: Row(
         children: [
           if (onBack != null)
@@ -132,7 +142,7 @@ class _ChatHeader extends StatelessWidget {
               icon: const Icon(Icons.arrow_back),
             ),
           _ThreadAvatar(thread: thread),
-          const SizedBox(width: 12),
+          SizedBox(width: compact ? 8 : 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,7 +162,7 @@ class _ChatHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (contact != null)
+          if (contact != null && !compact)
             IconButton(
               tooltip: contact.connected
                   ? 'Rozmowa głosowa'
@@ -162,15 +172,22 @@ class _ChatHeader extends StatelessWidget {
                   : null,
               icon: const Icon(Icons.call_outlined),
             ),
-          IconButton(
-            tooltip: 'Szukaj w rozmowie',
-            onPressed: onToggleSearch,
-            icon: const Icon(Icons.search),
-          ),
+          if (!compact)
+            IconButton(
+              tooltip: 'Szukaj w rozmowie',
+              onPressed: onToggleSearch,
+              icon: const Icon(Icons.search),
+            ),
           PopupMenuButton<_ChatMenuAction>(
             tooltip: 'Więcej opcji',
             onSelected: (action) {
               switch (action) {
+                case _ChatMenuAction.voice:
+                  onStartLiveVoice?.call();
+                  return;
+                case _ChatMenuAction.search:
+                  onToggleSearch();
+                  return;
                 case _ChatMenuAction.rename:
                   onRename?.call();
                   return;
@@ -180,9 +197,48 @@ class _ChatHeader extends StatelessWidget {
                 case _ChatMenuAction.groupInfo:
                   onGroupInfo?.call();
                   return;
+                case _ChatMenuAction.connectionCheck:
+                  onConnectionCheck?.call();
+                  return;
               }
             },
             itemBuilder: (context) => [
+              if (compact && contact != null)
+                PopupMenuItem(
+                  value: _ChatMenuAction.voice,
+                  enabled: contact.connected && contact.publicKey != null,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.call_outlined),
+                    title: const Text('Rozmowa głosowa'),
+                    subtitle: contact.connected && contact.publicKey != null
+                        ? null
+                        : const Text('Kontakt poza zasięgiem'),
+                  ),
+                ),
+              if (compact)
+                const PopupMenuItem(
+                  value: _ChatMenuAction.search,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.search),
+                    title: Text('Szukaj w rozmowie'),
+                  ),
+                ),
+              if (contact != null)
+                PopupMenuItem(
+                  value: _ChatMenuAction.connectionCheck,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      contact.connected
+                          ? Icons.network_ping_outlined
+                          : Icons
+                                .signal_wifi_statusbar_connected_no_internet_4_outlined,
+                    ),
+                    title: const Text('Sprawdź połączenie'),
+                  ),
+                ),
               const PopupMenuItem(
                 value: _ChatMenuAction.rename,
                 child: ListTile(
@@ -222,16 +278,23 @@ class _ChatHeader extends StatelessWidget {
 
   String _subtitle({required Contact? contact, required ChatGroup? group}) {
     if (group != null) {
-      return '${group.memberIds.length} uczestników • wiadomości tekstowe';
+      return '${group.memberIds.length} uczestników';
     }
     if (contact?.publicKey == null) {
-      return 'Jeszcze bez wymiany kluczy';
+      return 'Czeka na bezpieczne połączenie';
     }
     return '${contact!.trustLabel} • kod: ${contact.safetyCode}';
   }
 }
 
-enum _ChatMenuAction { rename, verify, groupInfo }
+enum _ChatMenuAction {
+  voice,
+  search,
+  connectionCheck,
+  rename,
+  verify,
+  groupInfo,
+}
 
 class _UnverifiedContactBanner extends StatelessWidget {
   const _UnverifiedContactBanner({required this.onVerify});
@@ -252,6 +315,21 @@ class _UnverifiedContactBanner extends StatelessWidget {
   }
 }
 
+class _ConnectionPendingBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: _FlowHint(
+        icon: Icons.hourglass_top_outlined,
+        title: 'Czekam na bezpieczne połączenie',
+        body:
+            'Zostaw oba telefony blisko siebie. Gdy połączenie będzie gotowe, wiadomości i pliki ruszą automatycznie.',
+      ),
+    );
+  }
+}
+
 class _KeyChangedBanner extends StatelessWidget {
   const _KeyChangedBanner({required this.onVerify});
 
@@ -262,7 +340,7 @@ class _KeyChangedBanner extends StatelessWidget {
     return MaterialBanner(
       leading: const Icon(Icons.warning_amber),
       content: const Text(
-        'Klucz tego kontaktu zmienił się. Porównaj kod bezpieczeństwa przed dalszą rozmową.',
+        'Tożsamość tego kontaktu zmieniła się. Potwierdź osobę ponownie przed dalszą rozmową.',
       ),
       actions: [
         TextButton(onPressed: onVerify, child: const Text('Ufaj nowemu')),
@@ -305,9 +383,10 @@ class _MessageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 360;
     return ListView.builder(
       reverse: true,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(compact ? 10 : 16),
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[messages.length - index - 1];
@@ -334,10 +413,12 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final bubbleMaxWidth = screenWidth < 560 ? screenWidth - 56 : 520.0;
     return Align(
       alignment: message.mine ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
+        constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: message.mine
@@ -514,8 +595,12 @@ class _MessageComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 360;
+    final iconConstraints = compact
+        ? const BoxConstraints.tightFor(width: 40, height: 40)
+        : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      padding: EdgeInsets.fromLTRB(compact ? 8 : 12, 0, compact ? 8 : 12, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -548,31 +633,37 @@ class _MessageComposer extends StatelessWidget {
                   minLines: 1,
                   maxLines: 4,
                   decoration: const InputDecoration(
-                    hintText: 'Wiadomość offline...',
+                    hintText: 'Wiadomość...',
                     border: OutlineInputBorder(),
                   ),
                   onSubmitted: (_) => onSend(),
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: compact ? 4 : 8),
               IconButton(
                 tooltip: 'Wyślij plik',
                 onPressed: isGroup || recordingVoice ? null : onAttach,
                 icon: const Icon(Icons.attach_file),
+                constraints: iconConstraints,
+                padding: EdgeInsets.all(compact ? 6 : 8),
               ),
-              const SizedBox(width: 4),
+              SizedBox(width: compact ? 2 : 4),
               IconButton(
                 tooltip: recordingVoice
                     ? 'Zatrzymaj i wyślij'
                     : 'Nagraj wiadomość głosową',
                 onPressed: isGroup ? null : onVoice,
                 icon: Icon(recordingVoice ? Icons.stop : Icons.mic_none),
+                constraints: iconConstraints,
+                padding: EdgeInsets.all(compact ? 6 : 8),
               ),
-              const SizedBox(width: 4),
+              SizedBox(width: compact ? 2 : 4),
               IconButton.filled(
                 tooltip: 'Wyślij',
                 onPressed: recordingVoice ? null : onSend,
                 icon: const Icon(Icons.send),
+                constraints: iconConstraints,
+                padding: EdgeInsets.all(compact ? 6 : 8),
               ),
             ],
           ),

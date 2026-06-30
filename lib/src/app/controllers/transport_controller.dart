@@ -5,6 +5,13 @@ part of '../../../main.dart';
 extension _TransportController on _ChatShellState {
   Future<void> _handleBleEvent(BleEvent event) async {
     if (event.kind == BleEventKind.peer) {
+      final previous = _store.contact(event.peerId);
+      final reconnected = previous != null && !previous.connected;
+      final keyChanged =
+          previous?.trustState == TrustState.verified &&
+          event.publicKey != null &&
+          previous?.publicKey != null &&
+          previous!.publicKey != event.publicKey;
       final contact = Contact(
         id: event.peerId,
         name: event.name?.trim().isNotEmpty == true ? event.name! : 'Kontakt',
@@ -18,7 +25,20 @@ extension _TransportController on _ChatShellState {
       await _store.upsertContact(contact);
       await _recordDiagnostic('peer_seen', 'Wykryto kontakt ${contact.id}');
       _selectedThreadId ??= contact.threadId;
-      setState(() => _status = 'Znaleziono: ${contact.name}');
+      setState(
+        () => _status = reconnected
+            ? 'Połączenie z ${contact.name} wróciło'
+            : 'Znaleziono: ${contact.name}',
+      );
+      if (keyChanged) {
+        _showFeedback(
+          'Klucz kontaktu się zmienił. Zweryfikuj osobę przed rozmową.',
+        );
+      } else if (reconnected) {
+        _showFeedback('Połączenie wróciło. Wysyłam zaległe wiadomości.');
+      } else {
+        _showFeedback('Znaleziono ${contact.name}. Możecie zacząć rozmowę.');
+      }
       await _sendHello(contact.id);
       await _flushQueuedMessages(contact.id);
       return;
@@ -31,7 +51,10 @@ extension _TransportController on _ChatShellState {
         'Rozłączono kontakt ${event.peerId}',
         level: DiagnosticLevel.warning,
       );
-      setState(() => _status = 'Kontakt poza zasięgiem');
+      setState(() => _status = 'Kontakt czeka na zasięg');
+      _showFeedback(
+        'Kontakt jest poza zasięgiem. Wiadomości poczekają i wyślą się później.',
+      );
       if (_liveVoiceSession?.peerId == event.peerId) {
         await _closeLiveVoiceSession(
           status: 'Rozmowa zakończona: utracono połączenie',
@@ -72,6 +95,8 @@ extension _TransportController on _ChatShellState {
       final delivered = _transport.markDelivered(packetId);
       if (_handleLiveVoiceDelivery(packetId)) {
         return;
+      } else if (_handleConnectionCheckDelivery(packetId)) {
+        return;
       } else if (delivered?.transferId != null) {
         await _markFileChunkDelivered(delivered!.transferId!, packetId);
       } else if (_groupDeliveries.containsKey(packetId)) {
@@ -98,6 +123,14 @@ extension _TransportController on _ChatShellState {
     }
 
     if (map['type'] == 'hello') {
+      final previous = _store.contact(peerId);
+      final reconnected = previous != null && !previous.connected;
+      final incomingPublicKey = map['publicKey'] as String?;
+      final keyChanged =
+          previous?.trustState == TrustState.verified &&
+          incomingPublicKey != null &&
+          previous?.publicKey != null &&
+          previous!.publicKey != incomingPublicKey;
       final contact = Contact(
         id: peerId,
         name: (map['name'] as String?)?.trim().isNotEmpty == true
@@ -106,14 +139,25 @@ extension _TransportController on _ChatShellState {
         remoteName: (map['name'] as String?)?.trim().isNotEmpty == true
             ? map['name'] as String
             : 'Kontakt',
-        publicKey: map['publicKey'] as String?,
+        publicKey: incomingPublicKey,
         lastSeen: DateTime.now(),
         connected: true,
       );
       await _store.upsertContact(contact);
       await _recordDiagnostic('hello_received', 'Odebrano hello od $peerId');
       _selectedThreadId ??= contact.threadId;
-      setState(() => _status = 'Połączono z ${contact.name}');
+      setState(
+        () => _status = reconnected
+            ? 'Połączenie z ${contact.name} wróciło'
+            : 'Połączono z ${contact.name}',
+      );
+      if (keyChanged) {
+        _showFeedback(
+          'Klucz kontaktu się zmienił. Zweryfikuj osobę przed rozmową.',
+        );
+      } else if (reconnected) {
+        _showFeedback('Połączenie wróciło. Wysyłam zaległe wiadomości.');
+      }
       await _flushQueuedMessages(peerId);
       return;
     }
@@ -128,7 +172,10 @@ extension _TransportController on _ChatShellState {
         'Brak klucza publicznego od $peerId',
         level: DiagnosticLevel.warning,
       );
-      setState(() => _status = 'Brak klucza publicznego od kontaktu');
+      setState(
+        () => _status =
+            'Połączono, ale kontakt nie jest jeszcze gotowy do rozmowy',
+      );
       return;
     }
     final packetId =
@@ -235,6 +282,7 @@ extension _TransportController on _ChatShellState {
   Future<void> _sendQueuedEnvelope(OutboundEnvelope envelope) async {
     final contact = _store.contact(envelope.peerId);
     if (contact == null || !contact.connected) {
+      setState(() => _status = 'Czeka na zasięg');
       return;
     }
     final attemptsExceeded = _transport.registerAttempt(envelope.id);
@@ -265,12 +313,18 @@ extension _TransportController on _ChatShellState {
         );
       }
       setState(() => _status = 'Nie udało się dostarczyć wiadomości');
+      _showFeedback(
+        'Nie udało się dostarczyć wiadomości. Spróbuj ponownie, gdy kontakt będzie blisko.',
+      );
       await _recordDiagnostic(
         'delivery_failed',
         'Przekroczono limit prób dla ${envelope.packetId}',
         level: DiagnosticLevel.error,
       );
       return;
+    }
+    if (envelope.attempts > 1) {
+      setState(() => _status = 'Wysyłam ponownie');
     }
     for (final frame in envelope.frames.where((frame) => !frame.acked)) {
       await _ble.send(

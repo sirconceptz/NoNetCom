@@ -66,6 +66,7 @@ class _ChatShellState extends State<ChatShell> {
   final Map<String, OutboundFileTransfer> _outboundFiles = {};
   final Map<String, InboundFileTransfer> _inboundFiles = {};
   final Map<String, OutboundGroupDelivery> _groupDeliveries = {};
+  final Map<String, _ConnectionCheckAttempt> _connectionChecks = {};
 
   StreamSubscription<BleEvent>? _bleSubscription;
   Timer? _retryTimer;
@@ -130,6 +131,10 @@ class _ChatShellState extends State<ChatShell> {
     _retryTimer?.cancel();
     _voiceTimer?.cancel();
     _liveVoiceTimer?.cancel();
+    for (final attempt in _connectionChecks.values) {
+      attempt.timeout.cancel();
+    }
+    _connectionChecks.clear();
     _lifecycleCoordinator.dispose();
     _transport.dispose();
     unawaited(_voice.dispose());
@@ -288,6 +293,7 @@ class _ChatShellState extends State<ChatShell> {
                     scanning: _scanning,
                     onEditProfile: _editProfileName,
                     onScan: _scan,
+                    onOpenConnectionHelp: _openConnectionHelp,
                     onCreateGroup: _createGroup,
                     onSelect: (id) => setState(() {
                       _selectedThreadId = id;
@@ -320,6 +326,9 @@ class _ChatShellState extends State<ChatShell> {
                     onGroupInfo: selected?.group == null
                         ? null
                         : () => _openGroupInfo(selected!.group!),
+                    onConnectionCheck: selected?.contact == null
+                        ? null
+                        : () => _runConnectionCheck(selected!.contact!),
                     onBack: isWideLayout
                         ? null
                         : () => setState(() {
@@ -388,6 +397,19 @@ class _ChatShellState extends State<ChatShell> {
         unawaited(_openAboutApp());
         return;
     }
+  }
+
+  void _showFeedback(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
   }
 }
 

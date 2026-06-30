@@ -21,8 +21,11 @@ extension _ContactsController on _ChatShellState {
                 style: Theme.of(sheetContext).textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Jedna osoba pokazuje swój kod, druga go skanuje. Potem zamieńcie się rolami, aby obie strony oznaczyły kontakt jako zaufany.',
+              const _FlowHint(
+                icon: Icons.qr_code_2,
+                title: 'Co teraz?',
+                body:
+                    '1. Jedna osoba wybiera „Pokaż mój kod”.\n2. Druga wybiera „Skanuj kod kontaktu”.\n3. Potem zamieńcie się rolami, aby obie strony były zaufane.',
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
@@ -99,6 +102,7 @@ extension _ContactsController on _ChatShellState {
   }
 
   Future<void> _scanContactVerificationQr(Contact contact) async {
+    _showFeedback('Zeskanuj kod z telefonu kontaktu.');
     final rawValue = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => _QrScannerPage(contactName: contact.name),
@@ -112,17 +116,23 @@ extension _ContactsController on _ChatShellState {
         'Nieprawidłowy kod',
         'Ten kod QR nie jest kodem weryfikacyjnym NoNetCom.',
       );
+      _showFeedback(
+        'To nie jest właściwy kod. Poproś kontakt o kod weryfikacyjny.',
+      );
       return;
     }
     if (!payload.matches(contact)) {
       await _recordDiagnostic(
         'contact_verification_mismatch',
-        'Kod QR nie pasuje do zapisanego klucza kontaktu',
+        'Kod QR nie pasuje do zapisanej tożsamości kontaktu',
         level: DiagnosticLevel.warning,
       );
       await _showVerificationError(
-        'Klucze nie są zgodne',
-        'Kod należy do profilu „${payload.profileName}”, ale nie pasuje do klucza zapisanego dla ${contact.name}. Nie oznaczono kontaktu jako zaufanego.',
+        'Kody nie są zgodne',
+        'Kod należy do profilu „${payload.profileName}”, ale nie pasuje do zapisanej tożsamości ${contact.name}. Nie oznaczono kontaktu jako zaufanego.',
+      );
+      _showFeedback(
+        'Nie oznaczyłem kontaktu jako zaufanego. Sprawdźcie kody jeszcze raz.',
       );
       return;
     }
@@ -168,13 +178,8 @@ extension _ContactsController on _ChatShellState {
     await _store.verifyContact(contact.id);
     await _recordDiagnostic('contact_verified', 'Zweryfikowano kontakt');
     if (!mounted) return;
-    setState(() => _status = 'Kontakt ${contact.name} jest zweryfikowany');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Zweryfikowano kontakt ${contact.name}'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    setState(() => _status = '${contact.name} jest zaufanym kontaktem');
+    _showFeedback('${contact.name} jest teraz zaufanym kontaktem.');
   }
 
   Future<void> _showVerificationError(String title, String message) {
@@ -267,7 +272,10 @@ extension _ContactsController on _ChatShellState {
         .toList();
     if (availableContacts.length < 2) {
       setState(
-        () => _status = 'Do grupy potrzeba co najmniej 2 kontaktów z kluczami',
+        () => _status = 'Do grupy potrzeba co najmniej 2 gotowych kontaktów',
+      );
+      _showFeedback(
+        'Do grupy potrzeba co najmniej dwóch osób z gotowym połączeniem.',
       );
       return;
     }

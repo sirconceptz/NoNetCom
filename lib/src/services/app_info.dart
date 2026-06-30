@@ -91,16 +91,18 @@ class CapabilityService {
   }
 
   String permissionTitle(Permission permission) {
-    if (permission == Permission.bluetoothScan) return 'Bluetooth: skanowanie';
+    if (permission == Permission.bluetoothScan) {
+      return 'Szukanie osób w pobliżu';
+    }
     if (permission == Permission.bluetoothConnect) {
-      return 'Bluetooth: połączenia';
+      return 'Połączenia w pobliżu';
     }
     if (permission == Permission.bluetoothAdvertise) {
-      return 'Bluetooth: widoczność';
+      return 'Widoczność dla osób w pobliżu';
     }
     if (permission == Permission.bluetooth) return 'Bluetooth';
     if (permission == Permission.locationWhenInUse) {
-      return 'Lokalizacja dla BLE';
+      return 'Lokalizacja do znajdowania osób';
     }
     if (permission == Permission.notification) return 'Powiadomienia';
     if (permission == Permission.microphone) return 'Mikrofon';
@@ -136,7 +138,7 @@ class CapabilityService {
     }
     items.add(
       CapabilityStatusItem(
-        label: 'Bluetooth LE',
+        label: 'Połączenia w pobliżu',
         status: bluetoothRunning ? 'aktywny' : 'nieaktywny',
         good: bluetoothRunning,
         fix: bluetoothRunning

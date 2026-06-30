@@ -3,6 +3,233 @@
 part of '../../../main.dart';
 
 extension _DiagnosticsController on _ChatShellState {
+  static const _connectionCheckTimeout = Duration(seconds: 8);
+  static const _connectionCheckGoodThreshold = Duration(milliseconds: 1800);
+
+  Future<void> _openConnectionHelp() async {
+    final permissions = await _loadCapabilityStatus();
+    if (!mounted) return;
+    final blockingPermissions = permissions
+        .where((item) => !item.good)
+        .toList();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Nie widzisz kontaktu?'),
+        content: SizedBox(
+          width: 520,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const _ConnectionHelpStep(
+                icon: Icons.airplanemode_active,
+                title: 'Tryb samolotowy',
+                body:
+                    'Jeśli jesteś w samolocie, po włączeniu trybu samolotowego ręcznie włącz Bluetooth.',
+              ),
+              const _ConnectionHelpStep(
+                icon: Icons.bluetooth_searching,
+                title: 'Oba telefony muszą szukać',
+                body:
+                    'Uruchom NoNetCom na obu telefonach, ustaw je blisko siebie i wybierz „Znajdź osoby”.',
+              ),
+              const _ConnectionHelpStep(
+                icon: Icons.battery_saver_outlined,
+                title: 'Oszczędzanie baterii',
+                body:
+                    'Wyłącz agresywne oszczędzanie baterii dla NoNetCom, szczególnie na Androidzie.',
+              ),
+              const _ConnectionHelpStep(
+                icon: Icons.phonelink_erase_outlined,
+                title: 'Force quit na iOS',
+                body:
+                    'Jeśli ręcznie wymusisz zamknięcie aplikacji na iOS, system zatrzyma działanie Bluetooth w tle do ponownego otwarcia.',
+              ),
+              if (blockingPermissions.isNotEmpty) ...[
+                const Divider(),
+                Text(
+                  'Do poprawienia teraz',
+                  style: Theme.of(dialogContext).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                for (final item in blockingPermissions)
+                  _CapabilityStatusRow(
+                    item: item,
+                    onRequest: item.permission == null
+                        ? null
+                        : () => _requestPermissionFromDialog(
+                            dialogContext,
+                            item.permission!,
+                          ),
+                    onSettings: openAppSettings,
+                  ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: _requestEssentialPermissions,
+            icon: const Icon(Icons.verified_user_outlined),
+            label: const Text('Poproś o zgody'),
+          ),
+          TextButton.icon(
+            onPressed: _startBluetooth,
+            icon: const Icon(Icons.bluetooth_connected),
+            label: const Text('Włącz Bluetooth'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              unawaited(_scan());
+            },
+            icon: const Icon(Icons.person_search_outlined),
+            label: const Text('Szukaj ponownie'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runConnectionCheck(Contact contact) async {
+    if (!contact.connected) {
+      setState(
+        () =>
+            _status = 'Kontakt jest poza zasięgiem. Spróbuj wyszukać ponownie.',
+      );
+      await _showConnectionCheckResult(
+        title: 'Połączenie wymaga poprawy',
+        icon: Icons.signal_wifi_connected_no_internet_4_outlined,
+        good: false,
+        body:
+            '${contact.name} jest poza zasięgiem. Zbliż telefony, włącz połączenia w pobliżu na obu urządzeniach i spróbuj ponownie.',
+      );
+      await _openConnectionHelp();
+      return;
+    }
+    await _sendHello(contact.id);
+    if (contact.publicKey == null) {
+      setState(
+        () => _status =
+            'Czekam na bezpieczne połączenie. Zostaw oba telefony blisko siebie.',
+      );
+      await _showConnectionCheckResult(
+        title: 'Połączenie wymaga poprawy',
+        icon: Icons.hourglass_top_outlined,
+        good: false,
+        body:
+            'Telefony się widzą, ale bezpieczne połączenie nie jest jeszcze gotowe. Zostaw oba urządzenia blisko siebie i sprawdź ponownie za chwilę.',
+      );
+      return;
+    }
+    final packetId = 'connection-check:${_newId()}';
+    final startedAt = DateTime.now();
+    _connectionChecks[packetId] = _ConnectionCheckAttempt(
+      contactId: contact.id,
+      contactName: contact.name,
+      startedAt: startedAt,
+      timeout: Timer(_connectionCheckTimeout, () {
+        unawaited(_handleConnectionCheckTimeout(packetId));
+      }),
+    );
+    final queued = await _queueSecurePacket(
+      contact: contact,
+      packetId: packetId,
+      clearPayload: {
+        'kind': 'connectionCheck',
+        'messageId': packetId,
+        'sentAt': DateTime.now().toIso8601String(),
+      },
+    );
+    setState(() => _status = 'Sprawdzam połączenie z ${contact.name}...');
+    _showFeedback('Sprawdzam wysyłkę i potwierdzenie od ${contact.name}.');
+    await _recordDiagnostic(
+      'connection_check_started',
+      'Rozpoczęto szybki test połączenia',
+    );
+    await _sendQueuedEnvelope(queued);
+  }
+
+  bool _handleConnectionCheckDelivery(String packetId) {
+    final attempt = _connectionChecks.remove(packetId);
+    if (attempt == null) return false;
+    attempt.timeout.cancel();
+    final elapsed = DateTime.now().difference(attempt.startedAt);
+    final good = elapsed <= _connectionCheckGoodThreshold;
+    final title = good ? 'Połączenie działa' : 'Połączenie wymaga poprawy';
+    setState(() => _status = '$title. Odpowiedź: ${elapsed.inMilliseconds} ms');
+    unawaited(
+      _recordDiagnostic(
+        good ? 'connection_check_ok' : 'connection_check_slow',
+        'ACK wrócił po ${elapsed.inMilliseconds} ms',
+        level: good ? DiagnosticLevel.info : DiagnosticLevel.warning,
+      ),
+    );
+    unawaited(
+      _showConnectionCheckResult(
+        title: title,
+        icon: good ? Icons.check_circle_outline : Icons.speed_outlined,
+        good: good,
+        body: good
+            ? 'Ping dotarł do ${attempt.contactName}, wysyłka działa, a potwierdzenie wróciło po ${elapsed.inMilliseconds} ms.'
+            : 'Ping dotarł do ${attempt.contactName}, ale potwierdzenie wróciło wolno: ${elapsed.inMilliseconds} ms. Zbliż telefony lub wyłącz oszczędzanie baterii.',
+      ),
+    );
+    return true;
+  }
+
+  Future<void> _handleConnectionCheckTimeout(String packetId) async {
+    final attempt = _connectionChecks.remove(packetId);
+    if (attempt == null || !mounted || _disposed) return;
+    await _recordDiagnostic(
+      'connection_check_timeout',
+      'Brak ACK dla szybkiego testu połączenia',
+      level: DiagnosticLevel.warning,
+    );
+    setState(() => _status = 'Połączenie wymaga poprawy. Brak odpowiedzi.');
+    await _showConnectionCheckResult(
+      title: 'Połączenie wymaga poprawy',
+      icon: Icons.error_outline,
+      good: false,
+      body:
+          'Ping został wysłany do ${attempt.contactName}, ale potwierdzenie nie wróciło w ciągu ${_connectionCheckTimeout.inSeconds} sekund. Zbliż telefony, sprawdź Bluetooth i spróbuj ponownie.',
+    );
+  }
+
+  Future<void> _showConnectionCheckResult({
+    required String title,
+    required IconData icon,
+    required bool good,
+    required String body,
+  }) async {
+    if (!mounted || _disposed) return;
+    _showFeedback(good ? 'Połączenie działa.' : 'Połączenie wymaga poprawy.');
+    final scheme = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(icon, color: good ? Colors.green : scheme.error),
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Zamknij'),
+          ),
+          if (!good)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                unawaited(_openConnectionHelp());
+              },
+              icon: const Icon(Icons.help_outline),
+              label: const Text('Co sprawdzić?'),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openSettings() async {
     await showDialog<void>(
       context: context,
@@ -10,46 +237,48 @@ extension _DiagnosticsController on _ChatShellState {
         title: const Text('Ustawienia'),
         content: SizedBox(
           width: 480,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.person_outline),
-                title: const Text('Nazwa profilu'),
-                subtitle: Text(_store.profileName),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  unawaited(_editProfileName());
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.shield_outlined),
-                title: const Text('Bezpieczeństwo'),
-                subtitle: const Text('PIN, tożsamość i szyfrowanie'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  unawaited(_openSecurityCenter());
-                },
-              ),
-              const Divider(),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.tune),
-                title: const Text('Zaawansowane'),
-                subtitle: const Text(
-                  'Diagnostyka, logi, dane lokalne i informacje techniczne',
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('Nazwa profilu'),
+                  subtitle: Text(_store.profileName),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    unawaited(_editProfileName());
+                  },
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  unawaited(_openAdvancedSettings());
-                },
-              ),
-            ],
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.shield_outlined),
+                  title: const Text('Bezpieczeństwo'),
+                  subtitle: const Text('PIN, tożsamość i szyfrowanie'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    unawaited(_openSecurityCenter());
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.tune),
+                  title: const Text('Zaawansowane'),
+                  subtitle: const Text(
+                    'Diagnostyka, logi, dane lokalne i informacje techniczne',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    unawaited(_openAdvancedSettings());
+                  },
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -69,49 +298,51 @@ extension _DiagnosticsController on _ChatShellState {
         title: const Text('Zaawansowane'),
         content: SizedBox(
           width: 480,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.monitor_heart_outlined),
-                title: const Text('Diagnostyka połączenia'),
-                subtitle: const Text(
-                  'Stan Bluetooth, kolejka pakietów i uprawnienia',
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.monitor_heart_outlined),
+                  title: const Text('Diagnostyka połączenia'),
+                  subtitle: const Text(
+                    'Stan połączenia, oczekujące wiadomości i uprawnienia',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    unawaited(_openDiagnostics());
+                  },
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  unawaited(_openDiagnostics());
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.storage_outlined),
-                title: const Text('Dane lokalne i logi'),
-                subtitle: const Text(
-                  'Backupy, raporty, logi błędów i czyszczenie danych',
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.storage_outlined),
+                  title: const Text('Dane lokalne i logi'),
+                  subtitle: const Text(
+                    'Backupy, raporty, logi błędów i czyszczenie danych',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    unawaited(_openDataCenter());
+                  },
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  unawaited(_openDataCenter());
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.code),
-                title: const Text('Informacje techniczne'),
-                subtitle: const Text(
-                  'Wersja, zgody systemowe i stan komponentów',
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.code),
+                  title: const Text('Informacje techniczne'),
+                  subtitle: const Text(
+                    'Wersja, zgody systemowe i stan komponentów',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(dialogContext);
+                    unawaited(_openTechnicalInfo());
+                  },
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  unawaited(_openTechnicalInfo());
-                },
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         actions: [
@@ -146,13 +377,13 @@ extension _DiagnosticsController on _ChatShellState {
                 icon: _bluetoothRunning
                     ? Icons.bluetooth_connected
                     : Icons.bluetooth_disabled,
-                title: 'Bluetooth LE',
+                title: 'Połączenia w pobliżu',
                 value: _bluetoothRunning ? 'aktywny' : 'nieaktywny',
                 good: _bluetoothRunning,
               ),
               _StatusTile(
                 icon: Icons.radar,
-                title: 'Skanowanie',
+                title: 'Szukanie osób',
                 value: _scanning ? 'trwa' : 'nieaktywne',
                 good: !_scanning,
               ),
@@ -165,7 +396,7 @@ extension _DiagnosticsController on _ChatShellState {
               ),
               _StatusTile(
                 icon: Icons.queue_outlined,
-                title: 'Kolejka pakietów',
+                title: 'Oczekujące wiadomości',
                 value: '${_transport.pendingCount}',
                 good: _transport.pendingCount == 0,
               ),
@@ -323,7 +554,7 @@ extension _DiagnosticsController on _ChatShellState {
               ),
               _StatusTile(
                 icon: Icons.radar,
-                title: 'Skanowanie',
+                title: 'Szukanie osób',
                 value: _scanning ? 'trwa' : 'nieaktywne',
                 good: !_scanning,
               ),
@@ -349,7 +580,7 @@ extension _DiagnosticsController on _ChatShellState {
                 ),
               _StatusTile(
                 icon: Icons.queue_outlined,
-                title: 'Kolejka pakietów',
+                title: 'Oczekujące wiadomości',
                 value: '${_transport.pendingCount}',
                 good: _transport.pendingCount == 0,
               ),
@@ -389,21 +620,21 @@ extension _DiagnosticsController on _ChatShellState {
     if (Platform.isAndroid) {
       bluetoothPermissions.addAll([
         PermissionStatusItem(
-          label: 'Bluetooth: skanowanie',
+          label: 'Szukanie osób w pobliżu',
           status: _permissionLabel(
             await _safePermissionStatus(Permission.bluetoothScan),
           ),
           good: await _permissionGood(Permission.bluetoothScan),
         ),
         PermissionStatusItem(
-          label: 'Bluetooth: połączenia',
+          label: 'Połączenia w pobliżu',
           status: _permissionLabel(
             await _safePermissionStatus(Permission.bluetoothConnect),
           ),
           good: await _permissionGood(Permission.bluetoothConnect),
         ),
         PermissionStatusItem(
-          label: 'Bluetooth: reklamowanie',
+          label: 'Widoczność dla osób w pobliżu',
           status: _permissionLabel(
             await _safePermissionStatus(Permission.bluetoothAdvertise),
           ),
@@ -477,12 +708,12 @@ extension _DiagnosticsController on _ChatShellState {
               },
               title: const Text('Dołącz metadane diagnostyczne do maila'),
               subtitle: const Text(
-                'Dodaje status Bluetooth, liczbę kontaktów, kolejkę pakietów i zdarzenia techniczne.',
+                'Dodaje status połączenia, liczbę kontaktów, oczekujące wiadomości i zdarzenia techniczne.',
               ),
             ),
             const SizedBox(height: 12),
             Text(
-              'Backup kontaktów eksportuje wyłącznie zaufane kontakty z publicznymi kluczami. Nie zapisuje prywatnego klucza E2EE ani treści rozmów.',
+              'Backup kontaktów eksportuje wyłącznie zaufane kontakty z publiczną tożsamością bezpieczeństwa. Nie zapisuje prywatnej tożsamości ani treści rozmów.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -581,7 +812,7 @@ extension _DiagnosticsController on _ChatShellState {
     final confirmed = await _confirmDestructive(
       title: 'Importować zaufane kontakty?',
       body:
-          'Import doda lub zaktualizuje lokalne nazwy, publiczne klucze i status zaufania kontaktów. Nie zmieni prywatnej tożsamości E2EE tej instalacji.',
+          'Import doda lub zaktualizuje lokalne nazwy, publiczną tożsamość bezpieczeństwa i status zaufania kontaktów. Nie zmieni prywatnej tożsamości tej instalacji.',
     );
     if (confirmed != true) return;
     final file = await FileChooserBridge.pickFile();
@@ -778,7 +1009,7 @@ extension _DiagnosticsController on _ChatShellState {
     final confirmed = await _confirmDestructive(
       title: 'Usunąć kontakty?',
       body:
-          'Usunie to lokalne nazwy, klucze i status zaufania kontaktów. Do ponownej rozmowy potrzebne będzie skanowanie i weryfikacja kluczy.',
+          'Usunie to lokalne nazwy i status zaufania kontaktów. Do ponownej rozmowy potrzebne będzie znalezienie osoby i ponowne potwierdzenie tożsamości.',
     );
     if (confirmed != true) return;
     await _store.clearContacts();
@@ -828,4 +1059,18 @@ extension _DiagnosticsController on _ChatShellState {
       ),
     );
   }
+}
+
+class _ConnectionCheckAttempt {
+  const _ConnectionCheckAttempt({
+    required this.contactId,
+    required this.contactName,
+    required this.startedAt,
+    required this.timeout,
+  });
+
+  final String contactId;
+  final String contactName;
+  final DateTime startedAt;
+  final Timer timeout;
 }

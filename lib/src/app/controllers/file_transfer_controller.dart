@@ -7,7 +7,10 @@ extension _FileTransferController on _ChatShellState {
     final contact = _selectedContact;
     if (contact == null) return;
     if (contact.publicKey == null) {
-      setState(() => _status = 'Kontakt nie ma jeszcze klucza E2EE');
+      setState(() => _status = 'Czekam na bezpieczne połączenie z kontaktem');
+      _showFeedback(
+        'Jeszcze nie można wysłać pliku. Zostaw telefony blisko siebie.',
+      );
       await _sendHello(contact.id);
       return;
     }
@@ -32,7 +35,10 @@ extension _FileTransferController on _ChatShellState {
     final contact = targetContact ?? _selectedContact;
     if (contact == null) return;
     if (contact.publicKey == null) {
-      setState(() => _status = 'Kontakt nie ma jeszcze klucza E2EE');
+      setState(() => _status = 'Czekam na bezpieczne połączenie z kontaktem');
+      _showFeedback(
+        'Kontakt nie jest jeszcze gotowy. Spróbuję, gdy połączenie będzie gotowe.',
+      );
       await _sendHello(contact.id);
       return;
     }
@@ -49,6 +55,11 @@ extension _FileTransferController on _ChatShellState {
         () => _status = attachmentType == MessageAttachmentType.voice
             ? 'Wiadomość głosowa jest zbyt duża'
             : 'Plik jest większy niż 30 MB',
+      );
+      _showFeedback(
+        attachmentType == MessageAttachmentType.voice
+            ? 'Nagranie jest zbyt duże. Nagraj krótszą wiadomość.'
+            : 'Ten plik jest za duży. Maksymalny rozmiar to 30 MB.',
       );
       return;
     }
@@ -144,6 +155,11 @@ extension _FileTransferController on _ChatShellState {
           ? 'Wysyłam wiadomość głosową'
           : 'Wysyłam plik $name',
     );
+    _showFeedback(
+      attachmentType == MessageAttachmentType.voice
+          ? 'Wiadomość głosowa czeka na wysłanie.'
+          : 'Plik dodany do wysyłania. Jeśli kontakt zniknie, wznowię automatycznie.',
+    );
   }
 
   Future<void> _acceptFileOffer(
@@ -203,6 +219,11 @@ extension _FileTransferController on _ChatShellState {
       () => _status = attachmentType == MessageAttachmentType.voice
           ? 'Rozpoczęto odbiór wiadomości głosowej'
           : 'Rozpoczęto odbiór pliku $fileName',
+    );
+    _showFeedback(
+      attachmentType == MessageAttachmentType.voice
+          ? 'Odbieram wiadomość głosową.'
+          : 'Odbieram plik $fileName.',
     );
   }
 
@@ -295,6 +316,7 @@ extension _FileTransferController on _ChatShellState {
       await _store.savePendingOutboundFiles(_outboundFiles);
       await _recordDiagnostic('file_send_complete', 'Plik dostarczony');
       setState(() => _status = 'Plik dostarczony');
+      _showFeedback('Plik dostarczony.');
     } else {
       await _store.savePendingOutboundFiles(_outboundFiles);
       setState(() => _status = 'Wysyłam plik: ${(progress * 100).round()}%');

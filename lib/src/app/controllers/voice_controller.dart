@@ -11,7 +11,8 @@ extension _VoiceController on _ChatShellState {
     final contact = _selectedContact;
     if (contact == null || _selectedGroup != null) return;
     if (contact.publicKey == null) {
-      setState(() => _status = 'Kontakt nie ma jeszcze klucza E2EE');
+      setState(() => _status = 'Czekam na bezpieczne połączenie z kontaktem');
+      _showFeedback('Głos będzie dostępny po połączeniu z tą osobą.');
       await _sendHello(contact.id);
       return;
     }
@@ -36,6 +37,7 @@ extension _VoiceController on _ChatShellState {
         _voiceElapsed = Duration.zero;
         _status = 'Nagrywanie wiadomości głosowej';
       });
+      _showFeedback('Nagrywam. Stuknij stop, aby wysłać wiadomość głosową.');
     } on VoiceMessageException catch (error) {
       await _recordDiagnostic(
         'voice_recording_permission_denied',
@@ -43,6 +45,9 @@ extension _VoiceController on _ChatShellState {
         level: DiagnosticLevel.warning,
       );
       setState(() => _status = error.message);
+      _showFeedback(
+        'Brak dostępu do mikrofonu. Przyznaj zgodę w ustawieniach.',
+      );
     } on Object catch (error, stack) {
       await AppErrorLog.instance.logError(
         error,
@@ -50,6 +55,7 @@ extension _VoiceController on _ChatShellState {
         source: 'voice_recording_start',
       );
       setState(() => _status = 'Nie udało się uruchomić mikrofonu');
+      _showFeedback('Nie udało się uruchomić mikrofonu. Spróbuj ponownie.');
     }
   }
 
@@ -70,6 +76,7 @@ extension _VoiceController on _ChatShellState {
           _voiceElapsed = Duration.zero;
           _status = 'Nagranie było zbyt krótkie';
         });
+        _showFeedback('Nagranie było zbyt krótkie, nie wysłałem go.');
         return;
       }
       if (recording.size > _maxVoiceMessageBytes) {
@@ -79,6 +86,7 @@ extension _VoiceController on _ChatShellState {
           _voiceElapsed = Duration.zero;
           _status = 'Wiadomość głosowa przekroczyła limit 5 MB';
         });
+        _showFeedback('Nagranie jest za duże. Nagraj krótszą wiadomość.');
         return;
       }
       if (targetContact == null) {
@@ -88,6 +96,9 @@ extension _VoiceController on _ChatShellState {
           _voiceElapsed = Duration.zero;
           _status = 'Kontakt dla nagrania jest już niedostępny';
         });
+        _showFeedback(
+          'Kontakt jest poza zasięgiem. Nagraj ponownie, gdy połączenie wróci.',
+        );
         return;
       }
       await _sendLocalAttachment(
@@ -103,6 +114,7 @@ extension _VoiceController on _ChatShellState {
         'Wiadomość głosowa dodana do kolejki',
       );
       setState(() => _voiceElapsed = Duration.zero);
+      _showFeedback('Wiadomość głosowa dodana do wysłania.');
     } on Object catch (error, stack) {
       await AppErrorLog.instance.logError(
         error,
@@ -113,6 +125,7 @@ extension _VoiceController on _ChatShellState {
         _voiceElapsed = Duration.zero;
         _status = 'Nie udało się zapisać wiadomości głosowej';
       });
+      _showFeedback('Nie udało się zapisać nagrania. Spróbuj ponownie.');
     }
   }
 
@@ -131,6 +144,7 @@ extension _VoiceController on _ChatShellState {
       _voiceElapsed = Duration.zero;
       _status = 'Nagranie anulowane';
     });
+    _showFeedback('Nagranie anulowane.');
   }
 
   Future<void> _playVoiceMessage(ChatMessage message) async {

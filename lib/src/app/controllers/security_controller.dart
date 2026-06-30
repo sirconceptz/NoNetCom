@@ -157,9 +157,9 @@ extension _SecurityController on _ChatShellState {
 
   Future<void> _importIdentityBackup() async {
     final confirmed = await _confirmDestructive(
-      title: 'Importować tożsamość E2EE?',
+      title: 'Importować tożsamość bezpieczeństwa?',
       body:
-          'Zastąpi to lokalny klucz prywatny tej instalacji. Kontakty mogą wymagać ponownej weryfikacji kodu bezpieczeństwa.',
+          'Zastąpi to prywatną tożsamość tej instalacji. Kontakty mogą wymagać ponownego potwierdzenia kodu bezpieczeństwa.',
     );
     if (confirmed != true) return;
     final file = await FileChooserBridge.pickFile();
@@ -180,7 +180,7 @@ extension _SecurityController on _ChatShellState {
         'Zaimportowano backup tożsamości',
       );
       await _startBluetooth();
-      setState(() => _status = 'Tożsamość E2EE zaimportowana');
+      setState(() => _status = 'Tożsamość bezpieczeństwa zaimportowana');
     } on FormatException catch (error) {
       await _recordDiagnostic(
         'identity_backup_import_failed',
@@ -204,7 +204,7 @@ extension _SecurityController on _ChatShellState {
       builder: (context) => AlertDialog(
         title: const Text('Szyfrowanie'),
         content: const Text(
-          'Treść wiadomości i chunki plików są szyfrowane end-to-end przez X25519 oraz AES-GCM. Metadane transportowe BLE, takie jak identyfikatory ramek i postęp transferu, nie są treścią wiadomości.',
+          'Treść wiadomości, nagrania i pliki są szyfrowane end-to-end między telefonami. Aplikacja może widzieć informacje potrzebne do dostarczenia danych, na przykład postęp transferu, ale nie zapisuje treści rozmów w diagnostyce.',
         ),
         actions: [
           TextButton(

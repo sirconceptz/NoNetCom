@@ -74,6 +74,7 @@ class _OnboardingPaneState extends State<_OnboardingPane> {
   @override
   Widget build(BuildContext context) {
     final isLast = _page == _pageCount - 1;
+    final compact = MediaQuery.sizeOf(context).width < 360;
     return Scaffold(
       appBar: AppBar(
         title: const Text('NoNetCom'),
@@ -97,7 +98,7 @@ class _OnboardingPaneState extends State<_OnboardingPane> {
                     icon: Icons.forum_outlined,
                     title: 'Rozmawiaj bez internetu',
                     body:
-                        'NoNetCom łączy telefony znajdujące się w pobliżu przez Bluetooth. Wiadomości pozostają na Twoich urządzeniach.',
+                        'NoNetCom łączy telefony w pobliżu przez Bluetooth. Wiadomości zostają na Twoich urządzeniach.',
                     note:
                         'W trybie samolotowym możesz ręcznie ponownie włączyć Bluetooth.',
                   ),
@@ -105,7 +106,7 @@ class _OnboardingPaneState extends State<_OnboardingPane> {
                     icon: Icons.badge_outlined,
                     title: 'Jak mają Cię widzieć inni?',
                     body:
-                        'Ta nazwa będzie widoczna podczas wyszukiwania osób w pobliżu. Możesz ją później zmienić w ustawieniach.',
+                        'Ta nazwa będzie widoczna podczas wyszukiwania osób w pobliżu. Zmienisz ją później w ustawieniach.',
                     content: TextField(
                       controller: widget.nameController,
                       autofocus: false,
@@ -124,7 +125,7 @@ class _OnboardingPaneState extends State<_OnboardingPane> {
                         : Icons.bluetooth_searching,
                     title: 'Znajdź osoby w pobliżu',
                     body:
-                        'Bluetooth służy do wykrywania kontaktów i przesyłania rozmów. Powiadomienia informują o nowych wiadomościach, a mikrofon obsługuje głos.',
+                        'Bluetooth wykrywa kontakty i przesyła rozmowy. Powiadomienia pokażą nowe wiadomości, a mikrofon obsłuży głos.',
                     content: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -157,18 +158,23 @@ class _OnboardingPaneState extends State<_OnboardingPane> {
                   ),
                   const _OnboardingPage(
                     icon: Icons.verified_user_outlined,
-                    title: 'Potwierdzaj właściwą osobę',
+                    title: 'Potwierdź właściwą osobę',
                     body:
-                        'Po dodaniu kontaktu zeskanujcie nawzajem swoje kody QR. Dzięki temu masz pewność, że szyfrowana rozmowa trafia do właściwej osoby.',
+                        'Po dodaniu kontaktu zeskanujcie nawzajem kody QR. Dzięki temu wiesz, że szyfrowana rozmowa trafia do właściwej osoby.',
                     note:
-                        'NoNetCom ostrzeże Cię, jeżeli klucz kontaktu kiedykolwiek się zmieni.',
+                        'NoNetCom ostrzeże Cię, jeżeli tożsamość bezpieczeństwa kontaktu kiedykolwiek się zmieni.',
                   ),
                 ],
               ),
             ),
             _OnboardingProgress(current: _page, count: _pageCount),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              padding: EdgeInsets.fromLTRB(
+                compact ? 12 : 20,
+                compact ? 12 : 16,
+                compact ? 12 : 20,
+                compact ? 14 : 20,
+              ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: Row(
@@ -200,7 +206,7 @@ class _OnboardingPaneState extends State<_OnboardingPane> {
                                     ? Icons.chat_bubble_outline
                                     : Icons.arrow_forward,
                               ),
-                        label: Text(isLast ? 'Przejdź do rozmów' : 'Dalej'),
+                        label: Text(isLast ? 'Start' : 'Dalej'),
                       ),
                     ),
                   ],
@@ -232,8 +238,14 @@ class _OnboardingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final compact = MediaQuery.sizeOf(context).width < 360;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
+      padding: EdgeInsets.fromLTRB(
+        compact ? 18 : 24,
+        compact ? 22 : 30,
+        compact ? 18 : 24,
+        16,
+      ),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
@@ -243,23 +255,27 @@ class _OnboardingPage extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  width: 64,
-                  height: 64,
+                  width: compact ? 56 : 64,
+                  height: compact ? 56 : 64,
                   decoration: BoxDecoration(
                     color: scheme.primaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, size: 34, color: scheme.onPrimaryContainer),
+                  child: Icon(
+                    icon,
+                    size: compact ? 30 : 34,
+                    color: scheme.onPrimaryContainer,
+                  ),
                 ),
               ),
-              const SizedBox(height: 28),
+              SizedBox(height: compact ? 20 : 26),
               Text(
                 title,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 body,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
@@ -267,9 +283,12 @@ class _OnboardingPage extends StatelessWidget {
                   height: 1.45,
                 ),
               ),
-              if (content != null) ...[const SizedBox(height: 28), content!],
+              if (content != null) ...[
+                SizedBox(height: compact ? 20 : 26),
+                content!,
+              ],
               if (note != null) ...[
-                const SizedBox(height: 28),
+                SizedBox(height: compact ? 20 : 26),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

@@ -95,6 +95,7 @@ extension _LifecycleController on _ChatShellState {
         _bluetoothRunning = true;
         _status = 'Jesteś widoczny dla osób w pobliżu';
       });
+      _showFeedback('Gotowe. Inne osoby mogą Cię teraz znaleźć.');
     } on PlatformException catch (error) {
       await _recordDiagnostic(
         'ble_error',
@@ -103,8 +104,12 @@ extension _LifecycleController on _ChatShellState {
       );
       setState(() {
         _bluetoothRunning = false;
-        _status = 'Bluetooth niedostępny: ${error.message ?? error.code}';
+        _status =
+            'Nie udało się włączyć komunikacji. Sprawdź Bluetooth i zgody.';
       });
+      _showFeedback(
+        'Nie udało się włączyć połączeń. Sprawdź zgody i spróbuj ponownie.',
+      );
     }
   }
 
@@ -117,14 +122,18 @@ extension _LifecycleController on _ChatShellState {
       _status = 'Szukam kontaktów w pobliżu...';
     });
     await _recordDiagnostic('scan_start', 'Rozpoczęto skanowanie BLE');
+    _showFeedback('Szukam osób w pobliżu. Zostaw telefony blisko siebie.');
     await _ble.scan();
     await Future<void>.delayed(const Duration(seconds: 8));
     if (mounted) {
       await _recordDiagnostic('scan_stop', 'Zakończono skanowanie BLE');
       setState(() {
         _scanning = false;
-        _status = 'Skanowanie zakończone';
+        _status = 'Skończyłem szukać osób w pobliżu';
       });
+      _showFeedback(
+        'Szukanie zakończone. Jeśli nikogo nie ma, sprawdź Bluetooth na obu telefonach.',
+      );
     }
   }
 
@@ -139,6 +148,7 @@ extension _LifecycleController on _ChatShellState {
     }
     await _recordDiagnostic('profile_renamed', 'Zmieniono nazwę profilu');
     setState(() => _status = 'Nazwa profilu zapisana');
+    _showFeedback('Nazwa zapisana. Tak zobaczą Cię osoby w pobliżu.');
   }
 
   Future<void> _editProfileName() async {

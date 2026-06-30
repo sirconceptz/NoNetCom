@@ -9,11 +9,13 @@ extension _LiveVoiceController on _ChatShellState {
       return;
     }
     if (!contact.connected) {
-      setState(() => _status = 'Kontakt jest poza zasięgiem');
+      setState(() => _status = 'Kontakt czeka na zasięg');
+      _showFeedback('Rozmowa głosowa ruszy, gdy kontakt będzie blisko.');
       return;
     }
     if (contact.publicKey == null) {
-      setState(() => _status = 'Kontakt nie ma jeszcze klucza E2EE');
+      setState(() => _status = 'Czekam na bezpieczne połączenie z kontaktem');
+      _showFeedback('Najpierw dokończ połączenie z tą osobą.');
       await _sendHello(contact.id);
       return;
     }
